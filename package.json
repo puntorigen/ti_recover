@@ -1,0 +1,36 @@
+{
+  "name": "ti_recover",
+  "version": "1.0.0",
+  "description": "Appcelerator Titanium APK source code recovery tool",
+  "main": "ti_recover.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/creador/ti_recover.git"
+  },
+  "keywords": [
+    "creador",
+    "recover",
+    "sourcecode",
+    "titanium",
+    "appcelerator",
+    "apk",
+    "decompile",
+    "android",
+    "recovery"
+  ],
+  "author": "Pablo Schaffner",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/creador/ti_recover/issues"
+  },
+  "homepage": "https://github.com/creador/ti_recover#readme",
+  "dependencies": {
+    "apk_unpack": "^1.1.4",
+    "cheerio": "^0.22.0",
+    "java": "^0.8.0",
+    "line-reader": "^0.4.0"
+  }
+}
