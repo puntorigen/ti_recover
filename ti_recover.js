@@ -1,5 +1,7 @@
 // ti_recover.js
-var ti 			= 	require('./ti_unpack'),		// extract(config, onReadyCB(full))	
+// TO DO: java is one instance ONLY, must init from here and then share its instance across apk_unpack and ti_unpack.
+
+var //ti 			= 	require('./ti_unpack'),		// extract(config, onReadyCB(full))	
 	apk			=	require('apk_unpack'),		// extract(apkfile, outputdir, onReadyCB)
 	cwd 		= 	process.cwd(),
 	fs 			=	require('fs'),
@@ -28,6 +30,8 @@ var init = function(config, onReady) {
 		// if apk_dir is empty and the given APK file exists..
 		// unpack APK to _tmp subdir
 		apk.init({ apk:_config.apk, dir:_config.tmp_dir, java:true });
+		console.log(apk);
+		/*
 		apk.extract(function(err) {
 			console.log('preparing -> extracting and decrypting classes.dex');
 			apk.decompile(function() {
@@ -35,7 +39,7 @@ var init = function(config, onReady) {
 				_config.apk_dir 	= _config.tmp_dir;
 				onReady();
 			});
-		});
+		});*/
 	} else {
 		onReady();
 	}
@@ -56,7 +60,8 @@ var test = function(onReady) {
 };
 
 
-
+exports.init = init;
+exports.test = test;
 
 // ******************
 // helper methods
