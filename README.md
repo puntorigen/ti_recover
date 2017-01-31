@@ -6,9 +6,9 @@ This package and command-line (CLI) helps you recover your lost source code from
 
 ### init (config).  
 Initializes the component. Can have the keys:<br/>
-apk (apkfile to open),<br/>
-apk_dir (optional apk_unpack dir already create to re-utilize it),<br/>
-dir (outputdir),<br/><br/>
+**apk** (apkfile to open),<br/>
+**apk_dir** (optional apk_unpack dir already create to re-utilize it),<br/>
+**out_dir** (outputdir)<br/><br/>
 
 ### test (onReadyCB).  
 This returns true/false indicating the given APK was made or not using Titanium.  
