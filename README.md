@@ -4,8 +4,9 @@ Appcelerator Titanium APK source code recovery tool
 
 This package and command-line (CLI) helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. It contains 4 main methods:
 
-### init (config).  
-Initializes the component. Can have the keys:<br/>
+### init (config, onReadyCB).  
+Initializes the component.<br/>
+Can have the keys:<br/>
 **apk** (apkfile to open),<br/>
 **apk_dir** (optional apk_unpack dir already create to re-utilize it),<br/>
 **out_dir** (outputdir)<br/><br/>
