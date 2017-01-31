@@ -49,8 +49,9 @@ var test = function(onReady) {
 		_tmp.package_name 	= 	data['package'];
 		_tmp.package_dir 	= 	data['package'].split('.').join(path.sep);
 		// test if AssetCryptImpl files exist in _config.apk_dir package_dir smali and src
-		
-		
+		_tmp.smali_loc 		= 	_config.apk_dir + 'smali' + path.sep + _tmp.package_dir + 'AssetCryptImpl.smali';
+		_tmp.java_loc 		= 	_config.apk_dir + 'src' + path.sep + _tmp.package_dir + 'AssetCryptImpl.java';
+		console.log('DEBUG ti_recover: test->_tmp',_tmp);
 	});
 };
 

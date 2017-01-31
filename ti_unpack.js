@@ -4,7 +4,7 @@ reads AssetCryptImpl files and return struct with Titanium file names and source
 var 	fs 			= require('fs'),
 		path 		= require('path'),
 		lineReader 	= require('line-reader'),
-		java 		= require('java'),
+		java 		= require('java');
 		java.classpath.push(__dirname+path.sep+'java/commons-lang-2.6.jar');
 
 var resp = {};
