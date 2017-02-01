@@ -12,15 +12,15 @@ Can have the keys:<br/>
 **out_dir** (outputdir)<br/><br/>
 
 ### test (onReadyCB).  
-This returns true/false indicating the given APK was made or not using Titanium.  
+This returns true/false on the callback, indicating the given APK was made or not using Titanium.  
 
 ### extract (onReadyCB).  
-This does the extraction of assets and js sources into memory (passed to callback).  
+This does the extraction of assets and js sources into memory (passed to callback onReady(err, data)).  
 
-### reconstruct (onReadyCB).  
+### reconstruct (onReadyCB).  **in progress**
 This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. Passes the restructured code to the callback. Can be called before writeToDisk to have a well formed Titanium project.  
 
-### writeToDisk (onReadeyCB).  
+### writeToDisk (onReadeyCB).  **in progress**
 This creates the files and directories of the source code in memory to the given outputdir.  
 
 ### info (callback(err,data)).  

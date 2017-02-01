@@ -39,7 +39,7 @@ var decrypt = function(onReady) {
 	var bytesC = { start:false, bufferlen:0, charbuf:'', line:'', array:[] };
 	var count = 0;
 	if (_config.smali!='' && _config.java!='') {
-		lineReader.eachLine(_default.smali, function(line, last){
+		lineReader.eachLine(_config.smali, function(line, last){
 			bytesC.line = line;
 			if (line.indexOf('private static initAssetsBytes()Ljava/nio/CharBuffer')!=-1) {
 				bytesC.start = true;
@@ -76,10 +76,10 @@ var decrypt = function(onReady) {
 				var passed_maps = false;
 				if (_config.debug) console.log('extracting file ranges ...');
 				meta.totalBytes = 0;
-				lineReader.eachLine(_default.java, function(line2, last2) {
+				lineReader.eachLine(_config.java, function(line2, last2) {
 					var tmp = {};
-					if (line2.indexOf('hashmap.put')!=-1) {
-						tmp.file = line2.split(',')[0].split('hashmap.put(').join('').split('"').join('').trim();
+					if (line2.indexOf('localHashMap.put')!=-1) {
+						tmp.file = line2.split(',')[0].split('localHashMap.put(').join('').split('"').join('').trim();
 						tmp.offset = line2.split(',')[1].split('new Range(').join('').trim();
 						tmp.length = line2.split(',')[2].split('));').join('').trim();
 						resp[tmp.file] = {
