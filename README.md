@@ -20,7 +20,7 @@ This does the extraction of assets and js sources into memory (passed to callbac
 ### reconstruct (onReadyCB).  `in progress`
 This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. Passes the restructured code to the callback. Can be called before writeToDisk to have a well formed Titanium project.  
 
-### writeToDisk (onReadeyCB).  `in progress`
+### writeToDisk ().
 This creates the files and directories of the source code in memory to the given outputdir.  
 
 ### info (callback(err,data)).  `in progress`

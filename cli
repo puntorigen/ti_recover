@@ -25,7 +25,8 @@ if (args.length==2) {
 		recover.test(function(isit) {
 			if (isit==true) {
 				recover.extract(function(err,info) {
-					console.log('source code recovered:',info);
+					recover.writeToDisk();
+					console.log('source code recovered!');
 				});
 			} else {
 				console.log('The given APK was not created using Appcelerator Titanium.');

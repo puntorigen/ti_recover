@@ -6,7 +6,8 @@ var _java 		=	require("./java_init"),
 	apk			=	require('apk_unpack'),		// extract(apkfile, outputdir, onReadyCB)
 	cwd 		= 	process.cwd(),
 	fs 			=	require('fs'),
-	path 		=	require('path');
+	path 		=	require('path'),
+	mkdirp 		= 	require('mkdirp');
 
 var _tmp 		= 	{
 	package_name 	: 	'',
@@ -42,7 +43,8 @@ var init = function(config, onReady) {
 			});
 		});
 	} else {
-		onReady();
+		console.log('The given APK file doesn\'t exist.');
+		//onReady();
 	}
 };
 
@@ -58,7 +60,6 @@ var test = function(onReady) {
 			// test if AssetCryptImpl files exist in _config.apk_dir package_dir smali and src
 			_tmp.smali_loc 		= 	_config.apk_dir + 'smali' + path.sep + _tmp.package_dir + path.sep + 'AssetCryptImpl.smali';
 			_tmp.java_loc 		= 	_config.apk_dir + 'src' + path.sep + _tmp.package_dir + path.sep + 'AssetCryptImpl.java';
-			console.log('ti_recover->test->',_tmp);
 			if (fileExists(_tmp.smali_loc) && fileExists(_tmp.java_loc)) {
 				onReady(true);
 			} else {
@@ -72,7 +73,7 @@ var extract = function(onReady) {
 	test(function(isit) {
 		if (isit==true) {
 			// its an appcelerator apk.
-			ti.init({ smali:_tmp.smali_loc, java:_tmp.java_loc, debug:false },function(r) {
+			ti.init({ smali:_tmp.smali_loc, java:_tmp.java_loc, debug:true },function(r) {
 				ti.decrypt(function(err, data) {
 					if (err==true) {
 						onReady(true, {});
@@ -88,9 +89,38 @@ var extract = function(onReady) {
 	});
 };
 
+var writeToDisk = function() {
+	if (_config.out_dir.charAt(0)!=path.sep && _config.out_dir.charAt(0)!='~') {
+		// if _config.out_dir is a relative location.
+		_config.out_dir = __dirname+path.sep+_config.out_dir+path.sep;
+		_config.out_dir = _config.out_dir.split(path.sep+path.sep).join(path.sep);	// ensure path sep isn't doubled.
+		//console.log('writeToDisk->out_dir',_config.out_dir);
+	} else {
+		_config.out_dir = _config.out_dir+path.sep;
+		_config.out_dir = _config.out_dir.split(path.sep+path.sep).join(path.sep);	// ensure path sep isn't doubled.
+		//console.log('writeToDisk->absolute dir->out_dir',_config.out_dir);
+	}
+	// loop over all files in memory and write their code to the out_dir
+	if (_tmp.memory_source!='') {
+		var _i;
+		for (_i in _tmp.memory_source) {
+			var _tmp_file = _config.out_dir + _i;
+			var _tmp_justdir = path.dirname(_tmp_file);
+			mkdirp.sync(_tmp_justdir);
+			// write source content to disk
+			fs.writeFile(_tmp_file, _tmp.memory_source[_i].content, function(err) {
+				console.log('writeToDisk-> file '+_i+', written.');
+			});
+		}
+	} else {
+		console.log('writeToDisk-> You must first call extract method.');
+	}
+};
+
 exports.init = init;
 exports.test = test;
 exports.extract = extract;
+exports.writeToDisk = writeToDisk;
 
 // ******************
 // helper methods

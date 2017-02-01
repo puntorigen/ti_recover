@@ -28,7 +28,8 @@
     "apk_unpack": "^1.1.5",
     "cheerio": "^0.22.0",
     "java": "^0.8.0",
-    "line-reader": "^0.4.0"
+    "line-reader": "^0.4.0",
+    "mkdirp": "^0.5.1"
   },
   "bin": {
     "ti_recover": "./cli"
