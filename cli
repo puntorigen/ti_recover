@@ -9,11 +9,12 @@ var recover		=	require('./ti_recover'),	//
 	args 		= 	process.argv.slice(2),
 	fs 			=	require('fs'),
 	path 		=	require('path'),
-	cur_dir 	= 	process.cwd();
+	cur_dir 	= 	process.cwd(),
+	colors 		=	require('colors');
 var _apk, _dir;
 
 // intro
-console.log('Appcelerator Titanium - APK Source Code Recovery Tool');
+console.log('Appcelerator Titanium'.yellow+' - '+'APK Source Code Recovery Tool'.underline.green);
 
 //
 if (args.length==2) {
@@ -22,11 +23,16 @@ if (args.length==2) {
 		_dir = args[1];	// if directory starts with a path separator, then we assume its an absolute directory.
 	}
 	recover.init({ apk:_apk, out_dir:_dir }, function() {
-		recover.test(function(isit) {
+		recover.test(function(err, isit) {
 			if (isit==true) {
 				recover.extract(function(err,info) {
-					recover.writeToDisk();
-					console.log('source code recovered!');
+					if (err) {
+						console.log('an error ocurred extracting!');
+					} else {
+						recover.writeToDisk();
+						recover.clean();
+						console.log(colors.green('source code recovered!'));
+					}
 				});
 			} else {
 				console.log('The given APK was not created using Appcelerator Titanium.');
@@ -35,5 +41,5 @@ if (args.length==2) {
 	});
 
 } else {
-	console.log('Usage: ti_recover apkfile.apk outputdirectory');
+	console.log(colors.red('Usage: ti_recover apkfile.apk outputdirectory'));
 }

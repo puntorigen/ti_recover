@@ -7,11 +7,13 @@ var _java 		=	require("./java_init"),
 	cwd 		= 	process.cwd(),
 	fs 			=	require('fs'),
 	path 		=	require('path'),
-	mkdirp 		= 	require('mkdirp');
+	mkdirp 		= 	require('mkdirp'),
+	colors 		= 	require('colors');
 
 var _tmp 		= 	{
 	package_name 	: 	'',
-	memory_source 	: 	{}
+	memory_source 	: 	{},
+	_tmp_used 		: 	false
 };
 
 var _config = {
@@ -35,15 +37,26 @@ var init = function(config, onReady) {
 		// unpack APK to _tmp subdir
 		apk.init({ apk:_config.apk, dir:_config.tmp_dir, java:true });
 		apk.extract(function(err) {
-			console.log('preparing -> extracting and decrypting classes.dex');
+			console.log('preparing -> extracting and decrypting classes.dex'.green);
 			apk.decompile(function() {
-				console.log('preparing -> ready');
-				_config.apk_dir 	= __dirname+path.sep+_config.tmp_dir+path.sep;
-				onReady();
+				console.log('preparing -> ready'.green);
+				if (_config.tmp_dir!='' && _config.tmp_dir.charAt(0)!=path.sep && _config.tmp_dir.charAt(0)!='~') {
+					_config.apk_dir 	= path.join(cwd,_config.tmp_dir+path.sep);	
+				} else {
+					_config.apk_dir 	= _config.tmp_dir;
+				}
+				_tmp._tmp_used = true;
+				setTimeout(function(){
+					// executed delay to wait for files to be written on slower hd disks.
+					onReady();
+				},100);
 			});
 		});
+	} else if (_config.apk_dir!='') {
+		// the apk_dir was given, so skip decompiler
+		onReady();
 	} else {
-		console.log('The given APK file doesn\'t exist.');
+		console.log('The given APK file doesn\'t exist.'.red);
 		//onReady();
 	}
 };
@@ -53,24 +66,25 @@ var test = function(onReady) {
 	// get main package name from manifest
 	packageInfo(function(err,data) {
 		if (err==true) {
-			onReady(true, {});
+			onReady(true, false);
 		} else {
 			_tmp.package_name 	= 	data['package'];
 			_tmp.package_dir 	= 	data['package'].split('.').join(path.sep);
 			// test if AssetCryptImpl files exist in _config.apk_dir package_dir smali and src
 			_tmp.smali_loc 		= 	_config.apk_dir + 'smali' + path.sep + _tmp.package_dir + path.sep + 'AssetCryptImpl.smali';
 			_tmp.java_loc 		= 	_config.apk_dir + 'src' + path.sep + _tmp.package_dir + path.sep + 'AssetCryptImpl.java';
+			//console.log('_tmp locations:',_tmp);
 			if (fileExists(_tmp.smali_loc) && fileExists(_tmp.java_loc)) {
-				onReady(true);
+				onReady(false, true);
 			} else {
-				onReady(false);
+				onReady(false, false);
 			}
 		}
 	});
 };
 
 var extract = function(onReady) {
-	test(function(isit) {
+	test(function(err1,isit) {
 		if (isit==true) {
 			// its an appcelerator apk.
 			ti.init({ smali:_tmp.smali_loc, java:_tmp.java_loc, debug:true },function(r) {
@@ -87,6 +101,12 @@ var extract = function(onReady) {
 			onReady(true, {});
 		}
 	});
+};
+
+var _prettyCode = function(jscode) {
+	// reformat the given code
+	var beautify = require('js-beautify').js_beautify;
+	return beautify(jscode, { indent_with_tabs: true });
 };
 
 var writeToDisk = function() {
@@ -108,11 +128,26 @@ var writeToDisk = function() {
 			var _tmp_justdir = path.dirname(_tmp_file);
 			mkdirp.sync(_tmp_justdir);
 			// write source content to disk
-			fs.writeFileSync(_tmp_file, _tmp.memory_source[_i].content);
-			console.log('writeToDisk-> file '+_i+', written.');
+			if (fileExists(_tmp_file)) {
+				// delete existing file first
+				fs.truncateSync(_tmp_file,0);
+			}
+			fs.writeFileSync(_tmp_file, _prettyCode(_tmp.memory_source[_i].content));
+			console.log(colors.yellow('writeToDisk-> file '+_i+' written.'));
 		}
 	} else {
-		console.log('writeToDisk-> You must first call extract method.');
+		console.log('writeToDisk-> You must first call extract method.'.red);
+	}
+};
+
+var clean = function() {
+	// deletes the _tmp directory
+	try {
+		if (_tmp._tmp_used==true) {
+			deleteFolderRecursive(_config.apk_dir);
+			console.log('clean->ok'.green);
+		}
+	} catch(a) {
 	}
 };
 
@@ -120,6 +155,7 @@ exports.init = init;
 exports.test = test;
 exports.extract = extract;
 exports.writeToDisk = writeToDisk;
+exports.clean = clean;
 
 // ******************
 // helper methods
@@ -129,6 +165,7 @@ var packageInfo = function(callback) {
 	var cheerio = require('cheerio');
 	var reply = {};
 	var _manifest = _config.apk_dir + 'AndroidManifest.xml';
+	//console.log('DEBUG:manifest loc:',_manifest);
 	if (fileExists(_manifest)) {
 		fs.readFile(_manifest, function(err,_data) {
 			if (err==true) {
@@ -158,7 +195,7 @@ var fileExists = function(filePath)
     {
         return false;
     }
-}
+};
 
 var dirExists = function(filePath)
 {
@@ -170,4 +207,18 @@ var dirExists = function(filePath)
     {
         return false;
     }
-}
+};
+
+var deleteFolderRecursive = function(path) {
+  if( fs.existsSync(path) ) {
+    fs.readdirSync(path).forEach(function(file,index){
+      var curPath = path + "/" + file;
+      if(fs.lstatSync(curPath).isDirectory()) { // recurse
+        deleteFolderRecursive(curPath);
+      } else { // delete file
+        fs.unlinkSync(curPath);
+      }
+    });
+    fs.rmdirSync(path);
+  }
+};

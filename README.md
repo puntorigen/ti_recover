@@ -35,6 +35,15 @@ ti_recover apkfile.apk outputdir
 
 ## UPDATES
 
+version 1.0.5:
+- improved readability of CLI, added prettyfier to source code, and bugfix several issues.
+
+version 1.0.4:
+- fixed tmp dir location bug. Now CLI works ok.
+
+version 1.0.2-3: 
+- added delay before decrypting files, to account for slower hdd disks
+
 version 1.0.1: 
 - fixed console debug
 
