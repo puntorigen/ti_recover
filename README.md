@@ -17,19 +17,21 @@ This returns true/false on the callback, indicating the given APK was made or no
 ### extract (onReadyCB).  
 This does the extraction of assets and js sources into memory (passed to callback onReady(err, data)).  
 
-### reconstruct (onReadyCB).  **in progress**
+### reconstruct (onReadyCB).  `in progress`
 This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. Passes the restructured code to the callback. Can be called before writeToDisk to have a well formed Titanium project.  
 
-### writeToDisk (onReadeyCB).  **in progress**
+### writeToDisk (onReadeyCB).  `in progress`
 This creates the files and directories of the source code in memory to the given outputdir.  
 
-### info (callback(err,data)).  
+### info (callback(err,data)).  `in progress`
 Retrieves information about the given APK using the extracted resources. Must be called after 'extract' method.  
 
 ## USAGE
 It comes with a command-line (CLI), that uses all methods of this package, and that you can use as follows:  
 
-**ti_recover** `apkfile.apk` `outputdir`
+```javascript
+ti_recover apkfile.apk outputdir
+```
 
 ## UPDATES
 
