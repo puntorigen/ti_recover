@@ -108,9 +108,8 @@ var writeToDisk = function() {
 			var _tmp_justdir = path.dirname(_tmp_file);
 			mkdirp.sync(_tmp_justdir);
 			// write source content to disk
-			fs.writeFile(_tmp_file, _tmp.memory_source[_i].content, function(err) {
-				console.log('writeToDisk-> file '+_i+', written.');
-			});
+			fs.writeFileSync(_tmp_file, _tmp.memory_source[_i].content);
+			console.log('writeToDisk-> file '+_i+', written.');
 		}
 	} else {
 		console.log('writeToDisk-> You must first call extract method.');

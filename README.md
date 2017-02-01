@@ -35,6 +35,9 @@ ti_recover apkfile.apk outputdir
 
 ## UPDATES
 
+version 1.0.1: 
+- fixed console debug
+
 version 1.0.0: 
 - first version
 - Add readme.md file
