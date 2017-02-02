@@ -28,6 +28,7 @@
     "apk_unpack": "^1.1.5",
     "cheerio": "^0.22.0",
     "colors": "^1.1.2",
+    "fs-readdir-recursive": "^1.0.0",
     "java": "^0.8.0",
     "js-beautify": "^1.6.8",
     "line-reader": "^0.4.0",

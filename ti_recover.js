@@ -13,7 +13,8 @@ var _java 		=	require("./java_init"),
 var _tmp 		= 	{
 	package_name 	: 	'',
 	memory_source 	: 	{},
-	_tmp_used 		: 	false
+	_tmp_used 		: 	false,
+	_isit_in_dev 	: 	false
 };
 
 var _config = {
@@ -75,9 +76,17 @@ var test = function(onReady) {
 			_tmp.java_loc 		= 	_config.apk_dir + 'src' + path.sep + _tmp.package_dir + path.sep + 'AssetCryptImpl.java';
 			//console.log('_tmp locations:',_tmp);
 			if (fileExists(_tmp.smali_loc) && fileExists(_tmp.java_loc)) {
+				_tmp._isit_in_dev 	= 	false;
 				onReady(false, true);
 			} else {
-				onReady(false, false);
+				// TODO: test if this is an APK in development mode, then the code is in _config.apk_dir/assets/Resources/*.js
+				_tmp.app_dev  	= 	_config.apk_dir + 'assets' + path.sep + 'Resources' + path.sep + 'app.js';
+				if (fileExists(_tmp.app_dev)) {
+					_tmp._isit_in_dev 	= 	true;
+					onReady(false, true);	// it is a Titanium APK, but in 'development mode'.
+				} else {
+					onReady(false, false);
+				}
 			}
 		}
 	});
@@ -85,7 +94,7 @@ var test = function(onReady) {
 
 var extract = function(onReady) {
 	test(function(err1,isit) {
-		if (isit==true) {
+		if (isit==true && _tmp._isit_in_dev==false) {
 			// its an appcelerator apk.
 			ti.init({ smali:_tmp.smali_loc, java:_tmp.java_loc, debug:true },function(r) {
 				ti.decrypt(function(err, data) {
@@ -97,6 +106,25 @@ var extract = function(onReady) {
 					}
 				});
 			});
+		} else if (isit==true && _tmp._isit_in_dev==true) {
+			// its an APK in development mode.
+			// read 'assets/Resources' directory into memory, to be able to use 'reconstruct' method afterwards.
+			// search existing files ...
+			var _readdir 		= require('fs-readdir-recursive');
+			var _base_assets 	= _config.apk_dir + 'assets' + path.sep + 'Resources' + path.sep;
+			var _thefiles 		= _readdir(_base_assets, function(test) {
+				return test[0].indexOf('.js') || test[0].indexOf('.json') || test[0].indexOf('.rjss') || test[0].indexOf('.xml') || test[0].indexOf('.tss');
+			});
+			// read their contents into memory ...
+			var _tmp_il;
+			_tmp.memory_source = {};
+			for (_tmp_il in _thefiles) {
+				_tmp.memory_source[_tmp_il] 			= 	{ 	offset:0, 	bytes:0, 	content:'' };
+				// read contents
+				_tmp.memory_source[_tmp_il].content 	= 	fs.readFileSync(_base_assets + _tmp_il);
+				_tmp.memory_source[_tmp_il].bytes 		= 	_tmp.memory_source[_tmp_il].content.length;
+			}
+			onReady(false, _tmp.memory_source);
 		} else {
 			onReady(true, {});
 		}
