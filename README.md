@@ -35,6 +35,9 @@ ti_recover apkfile.apk outputdir
 
 ## UPDATES
 
+version 1.0.6:
+- added ability to recover APKs created in development mode.
+
 version 1.0.5:
 - improved readability of CLI, added prettyfier to source code, and bugfix several issues.
 
