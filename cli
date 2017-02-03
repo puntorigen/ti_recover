@@ -30,7 +30,9 @@ if (args.length==2) {
 						console.log('an error ocurred extracting!');
 					} else {
 						recover.writeToDisk();
-						//recover.clean();
+						recover.copyAssets();
+						console.log(colors.green('resources copied!'));
+						recover.clean();
 						console.log(colors.green('source code recovered!'));
 					}
 				});

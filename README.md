@@ -2,7 +2,16 @@ Appcelerator Titanium APK source code recovery tool
 ==============================
 ## INTRO
 
-This package and command-line (CLI) helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. It contains 4 main methods:
+This package and command-line (CLI) helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. 
+
+## USAGE
+It comes with a command-line (CLI), that uses all methods of this package, and that you can use as follows:  
+
+```javascript
+ti_recover apkfile.apk outputdir
+```
+
+As a package contains the following methods:
 
 ### init (config, onReadyCB).  
 Initializes the component.<br/>
@@ -18,22 +27,27 @@ This returns true/false on the callback, indicating the given APK was made or no
 This does the extraction of assets and js sources into memory (passed to callback onReady(err, data)).  
 
 ### reconstruct (onReadyCB).  `in progress`
-This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. Passes the restructured code to the callback. Can be called before writeToDisk to have a well formed Titanium project.  
+This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. 
+Can be called before writeToDisk to have a well formed Titanium project.  
 
 ### writeToDisk ().
-This creates the files and directories of the source code in memory to the given outputdir.  
+This creates the files and directories of the source code in memory to the given outputdir. 
+
+### copyAssets ().
+This retrieves the APK image and resources assets into the outputdir.
+
+### clean ().
+This cleanses the temporal directory used to process the files.  
 
 ### info (callback(err,data)).  `in progress`
-Retrieves information about the given APK using the extracted resources. Must be called after 'extract' method.  
+Retrieves Titanium information about the current APK using the extracted resources. Must be called after 'extract' method.  
 
-## USAGE
-It comes with a command-line (CLI), that uses all methods of this package, and that you can use as follows:  
-
-```javascript
-ti_recover apkfile.apk outputdir
-```
 
 ## UPDATES
+
+version 1.0.7:
+- updated to latest apk_unpack to use jadx.
+- now resources and manifest are also copied to outputdir
 
 version 1.0.6:
 - added ability to recover APKs created in development mode.

@@ -6,6 +6,7 @@ var 	fs 			= require('fs'),
 		lineReader 	= require('line-reader'),
 		java 		= require('java');
 		java.classpath.push(__dirname+path.sep+'java/commons-lang-2.6.jar');
+		java.options.push('-Xrs'); // reduce signal os signals 
 
 var resp = {};
 var meta = {
@@ -18,7 +19,8 @@ var classes = {
 	integer 	: 	java.import('java.lang.Integer'),
 	string 		: 	java.import('java.lang.String'),
 	escapeu 	: 	java.import('org.apache.commons.lang.StringEscapeUtils'),
-	charbuf 	: 	java.import('java.nio.CharBuffer')
+	charbuf 	: 	java.import('java.nio.CharBuffer'),
+	_javalog 	: 	java.import('java.util.logging.LogManager')
 };
 var _config = {
 	smali 		: 	'',
@@ -30,6 +32,9 @@ var _config = {
 var init = function(config, onReady) {
 	// config
 	for (var _c in config) _config[_c] = config[_c];
+	// turn standard java logger off
+	classes._javalog.getLogManagerSync().resetSync();
+	// ready
 	onReady();
 };
 
@@ -78,16 +83,19 @@ var decrypt = function(onReady) {
 				meta.totalBytes = 0;
 				lineReader.eachLine(_config.java, function(line2, last2) {
 					var tmp = {};
-					if (line2.indexOf('localHashMap.put')!=-1) {
-						tmp.file = line2.split(',')[0].split('localHashMap.put(').join('').split('"').join('').trim();
+					if (line2.indexOf('hashMap.put')!=-1) {
+						tmp.file = line2.split(',')[0].split('hashMap.put(').join('').split('"').join('').trim();
 						tmp.offset = line2.split(',')[1].split('new Range(').join('').trim();
 						tmp.length = line2.split(',')[2].split('));').join('').trim();
-						resp[tmp.file] = {
-							offset 	: 	classes.integer.decodeSync(tmp.offset),
-							bytes 	: 	classes.integer.decodeSync(tmp.length)
-						};
-						resp[tmp.file].content = _filterDataInRange(tmp.file, _inbytes2, resp[tmp.file].offset, resp[tmp.file].bytes);
-						meta.totalBytes += resp[tmp.file].bytes;
+						try {
+							resp[tmp.file] = {
+								offset 	: 	classes.integer.decodeSync(tmp.offset),
+								bytes 	: 	classes.integer.decodeSync(tmp.length)
+							};
+							resp[tmp.file].content = _filterDataInRange(tmp.file, _inbytes2, resp[tmp.file].offset, resp[tmp.file].bytes);
+							meta.totalBytes += resp[tmp.file].bytes;
+						} catch(eeee) {
+						}
 						passed_maps = true;
 					} else {
 						if (passed_maps) {

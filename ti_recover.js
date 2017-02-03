@@ -168,6 +168,16 @@ var writeToDisk = function() {
 	}
 };
 
+var copyAssets = function() {
+	// copy the images, assets and resources folder to the target output dir
+	var _copy_dir = require('copy-dir');
+	var _file = require('fs-extra');
+	// copy AndroidManifest.xml to output dir
+	_file.copySync(_config.apk_dir+'AndroidManifest.xml', _config.out_dir+'AndroidManifest.xml');
+	// copy assets
+	_copy_dir.sync(_config.apk_dir+'assets'+path.sep, _config.out_dir+'assets'+path.sep);
+};
+
 var clean = function() {
 	// deletes the _tmp directory
 	try {
@@ -183,6 +193,7 @@ exports.init = init;
 exports.test = test;
 exports.extract = extract;
 exports.writeToDisk = writeToDisk;
+exports.copyAssets = copyAssets;
 exports.clean = clean;
 
 // ******************
