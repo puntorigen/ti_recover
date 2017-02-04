@@ -11,7 +11,7 @@ It comes with a command-line (CLI), that uses all methods of this package, and t
 ti_recover apkfile.apk outputdir
 ```
 
-As part of my blog post: [link to my blog](https://pabloschaffner.cl/2017/02/01/how-recoverable-is-an-apk-source-code-made-with-titanium/)
+As part of my blog post: <a href="https://pabloschaffner.cl/2017/02/01/how-recoverable-is-an-apk-source-code-made-with-titanium/">link to my blog</a><br/>
 As a package contains the following methods:
 
 ### init (config, onReadyCB).  
@@ -46,7 +46,7 @@ Retrieves Titanium information about the current APK using the extracted resourc
 
 ## UPDATES
 
-version 1.0.7-8:
+version 1.0.7-9:
 - updated to latest apk_unpack to use jadx.
 - now resources and manifest are also copied to outputdir
 

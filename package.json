@@ -1,6 +1,6 @@
 {
   "name": "ti_recover",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Appcelerator Titanium APK source code recovery tool",
   "main": "ti_recover.js",
   "repository": {
