@@ -46,7 +46,7 @@ Retrieves Titanium information about the current APK using the extracted resourc
 
 ## UPDATES
 
-version 1.1.0:
+version 1.1.1:
 - now assets are put on the correct directories.
 
 version 1.0.9:
