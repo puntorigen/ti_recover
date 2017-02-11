@@ -25,7 +25,7 @@ Can have the keys:<br/>
 This returns true/false on the callback, indicating the given APK was made or not using Titanium.  
 
 ### extract (onReadyCB).  
-This does the extraction of assets and js sources into memory (passed to callback onReady(err, data)).  
+This does the extraction of assets and js sources into memory.  
 
 ### reconstruct (onReadyCB).  `in progress`
 This attempts to rebuild the source code from memory into a structure that can be opened as a Titanium Project. 
@@ -46,7 +46,10 @@ Retrieves Titanium information about the current APK using the extracted resourc
 
 ## UPDATES
 
-version 1.0.7-9:
+version 1.1.0:
+- now assets are put on the correct directories.
+
+version 1.0.9:
 - updated to latest apk_unpack to use jadx.
 - now resources and manifest are also copied to outputdir
 

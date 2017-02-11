@@ -14,7 +14,8 @@ var _tmp 		= 	{
 	package_name 	: 	'',
 	memory_source 	: 	{},
 	_tmp_used 		: 	false,
-	_isit_in_dev 	: 	false
+	_isit_in_dev 	: 	false,
+	_restructured	: 	false
 };
 
 var _config = {
@@ -160,8 +161,10 @@ var writeToDisk = function() {
 				// delete existing file first
 				fs.truncateSync(_tmp_file,0);
 			}
-			fs.writeFileSync(_tmp_file, _prettyCode(_tmp.memory_source[_i].content));
-			console.log(colors.yellow('writeToDisk-> file '+_i+' written.'));
+			var _pti = _prettyCode(_tmp.memory_source[_i].content);
+			var _byt = (_pti.length>1000)?Math.round(_pti.length/1024)+' KB':_pti.length+ ' Bytes';
+			fs.writeFileSync(_tmp_file, _pti);
+			console.log(colors.yellow('writeToDisk-> file '+_i+' written ('+_byt+').'));
 		}
 	} else {
 		console.log('writeToDisk-> You must first call extract method.'.red);
@@ -175,7 +178,10 @@ var copyAssets = function() {
 	// copy AndroidManifest.xml to output dir
 	_file.copySync(_config.apk_dir+'AndroidManifest.xml', _config.out_dir+'AndroidManifest.xml');
 	// copy assets
-	_copy_dir.sync(_config.apk_dir+'assets'+path.sep, _config.out_dir+'assets'+path.sep);
+	if (_tmp._restructured) {
+	} else {
+		_copy_dir.sync(_config.apk_dir+'assets'+path.sep+'Resources'+path.sep, _config.out_dir); // +'assets'+path.sep
+	}
 };
 
 var clean = function() {
