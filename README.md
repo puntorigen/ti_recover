@@ -1,5 +1,7 @@
 ![ti_recover](https://user-images.githubusercontent.com/57605485/133170750-20244127-1ea0-4cd0-9c67-ac5ca44f17bc.png)
 
+![license](https://img.shields.io/npm/l/ti_recover) ![lines](https://img.shields.io/tokei/lines/github/puntorigen/ti_recover)
+
 Package and command-line (CLI) that helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. 
 
 ## INSTALL
