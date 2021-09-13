@@ -1,13 +1,16 @@
-Appcelerator Titanium APK source code recovery tool
-==============================
-## INTRO
+![ti_recover](https://user-images.githubusercontent.com/57605485/133170750-20244127-1ea0-4cd0-9c67-ac5ca44f17bc.png)
 
-This package and command-line (CLI) helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. 
+Package and command-line (CLI) that helps you recover your lost source code from almost any APK made using Appcelerator Titanium, either be in development or distribution mode. 
+
+## INSTALL
+```bash
+npm install -g puntorigen/ti_recover
+```
 
 ## USAGE
 It comes with a command-line (CLI), that uses all methods of this package, and that you can use as follows:  
 
-```javascript
+```bash
 ti_recover apkfile.apk outputdir
 ```
 
