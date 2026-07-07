@@ -189,6 +189,10 @@ npm run typecheck  # tsc --noEmit
 
 ## Updates
 
+### version 2.3.1
+
+- docs: fixed the broken blog-post link in the README.
+
 ### version 2.3.0
 
 - **More robust `ti.cloak` key extraction** ([issue #13](https://github.com/puntorigen/ti_recover/issues/13),

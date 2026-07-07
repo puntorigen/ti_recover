@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("titanium-apk-recover")
   .description("Recover the source code from an Appcelerator Titanium APK.")
-  .version("2.3.0");
+  .version("2.3.1");
 
 program
   .command("recover", { isDefault: true })
