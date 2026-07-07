@@ -8,7 +8,7 @@ Recover the source code from almost any APK built with [Appcelerator Titanium](h
 
 It ships as both a modern, promise-based **library** (TypeScript types included, ESM + CommonJS) and a **command-line tool**, and runs **entirely in JavaScript** — no JDK, apktool or jadx required.
 
-> As featured in my blog post: [How recoverable is an APK's source code made with Titanium?](https://pabloschaffner.cl/2017/02/01/how-recoverable-is-an-apk-source-code-made-with-titanium/)
+> As featured in my blog post: [How recoverable is an APK's source code made with Titanium?](https://www.pabloschaffner.com/blog/2017-recovering-titanium-apk-source-code)
 
 ## Requirements
 
