@@ -2,7 +2,7 @@
 
 ![license](https://img.shields.io/npm/l/ti_recover) ![lines](https://img.shields.io/tokei/lines/github/puntorigen/ti_recover)
 
-Recover the source code from almost any APK built with [Appcelerator Titanium](https://titaniumsdk.com/), whether it was compiled in **development** or **distribution** (encrypted) mode.
+Recover the source code from almost any APK built with [Appcelerator Titanium](https://titaniumsdk.com/), whether it was compiled in **development** or **distribution** (encrypted) mode — including the newer **`ti.cloak`** (`.bin`) encryption.
 
 It ships as both a modern, promise-based **library** (TypeScript types included, ESM + CommonJS) and a **command-line tool**, and runs **entirely in JavaScript** — no JDK, apktool or jadx required.
 
@@ -120,8 +120,10 @@ await ti.clean();                // remove the temporary working directory
 Pure, JVM-free helpers are also exported for advanced use and testing:
 `parseManifest`, `parseBinaryManifest`, `readAssetCrypt`, `decryptRange`,
 `decryptRanges`, `parseRanges`, `parseAssetBuffer`, `decodeJavaInt`,
-`detectAlloy`, `extractStringChunks`, `extractRanges`, `instructionWidth`,
-`buildInfo`, `buildReconstruct` and `buildTiappXml`.
+`detectAlloy`, `extractStringChunks`, `extractRanges`, `extractByteArrayFields`,
+`extractCloakSalt`, `instructionWidth`, `deriveCloakKey`, `decryptCloakAsset`,
+`pickCloakKey`, `isProbablyText`, `buildInfo`, `buildReconstruct` and
+`buildTiappXml`.
 
 ## How it works
 
@@ -141,14 +143,30 @@ Everything runs in pure JS:
   ranges directly, then decrypts each file with `node:crypto`
   (`aes-128-ecb`, key = the blob's last 16 bytes).
 
-### Unsupported: the newer `ti.cloak` scheme
+### The newer `ti.cloak` scheme
 
 Recent Titanium SDKs replaced the static `AssetCryptImpl` blob with a scheme
-that stores each source as an encrypted `.bin` asset whose key is derived
-**natively at runtime** (see [issue #9](https://github.com/puntorigen/ti_recover/issues/9)).
-Because the key never appears statically, those APKs cannot be recovered by
-static analysis. ti_recover detects this case and reports it with a clear
-error instead of producing garbage.
+that stores each source as an encrypted `Resources/<name>.bin` asset, decrypted
+at runtime with `AES/CBC/PKCS5Padding` (IV = a hardcoded `salt`) and a key
+produced by the native `libti.cloak.so` (see
+[issue #9](https://github.com/puntorigen/ti_recover/issues/9) and
+[#6](https://github.com/puntorigen/ti_recover/issues/6)).
+
+Since **v2.2.0** ti_recover recovers these too, entirely in JS:
+
+- the `salt` (IV) is lifted from `AssetCryptImpl.<clinit>` (its `byte[]`
+  `fill-array-data` payload) in the DEX;
+- the AES key is derived from the fixed key block the build embeds in every
+  bundled `lib/<abi>/libti.cloak.so` (the key is `salt XOR xor`, where `xor` is
+  assembled from four slices of that block);
+- each `.bin` is decrypted with `node:crypto` (`aes-128-cbc`), transparently
+  gunzipping any compressed payloads.
+
+The derived key is confirmed by trial-decrypting a sample asset, so ti_recover
+tries every bundled ABI and only proceeds when one produces valid output. If the
+APK ships no `libti.cloak.so` (e.g. an ABI-split APK missing the native lib), the
+key can't be derived and ti_recover reports it with a clear error instead of
+producing garbage.
 
 ## Development
 
@@ -161,6 +179,20 @@ npm run typecheck  # tsc --noEmit
 ```
 
 ## Updates
+
+### version 2.2.0
+
+- **Recovers the newer `ti.cloak` (`.bin`) encryption scheme** in pure JS
+  (previously detected-but-unsupported):
+  - lifts the hardcoded `salt` (AES-CBC IV) from `AssetCryptImpl.<clinit>`'s
+    `fill-array-data` payload in the DEX;
+  - derives the AES key from the fixed key block embedded in the bundled
+    `lib/<abi>/libti.cloak.so` (`key = salt XOR xor`);
+  - decrypts every `Resources/*.bin` asset with `node:crypto` `aes-128-cbc`,
+    transparently gunzipping compressed payloads, and confirms the key by trial
+    decryption across all bundled ABIs.
+- Still reports a clear error when the native `libti.cloak.so` (or the salt) is
+  absent and the key therefore can't be derived.
 
 ### version 2.1.0
 

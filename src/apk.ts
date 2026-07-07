@@ -18,9 +18,16 @@ export interface UnpackResult {
   manifest: ManifestInfo | null;
   /** Raw `classes*.dex` buffers, ordered `classes.dex`, `classes2.dex`, ... */
   dexBuffers: Uint8Array[];
+  /** `lib/<abi>/libti.cloak.so` buffers (for ti.cloak key derivation). */
+  cloakLibs: Buffer[];
 }
 
 const ASSETS_PREFIX = "assets/Resources/";
+const CLOAK_LIB_SUFFIX = "/libti.cloak.so";
+
+function isCloakLib(name: string): boolean {
+  return name.startsWith("lib/") && name.endsWith(CLOAK_LIB_SUFFIX);
+}
 
 /**
  * Unpacks an APK into `tmpDir` (relative to `cwd`): writes a readable
@@ -42,7 +49,8 @@ export async function unpackApk(
     (f) =>
       f.name === "AndroidManifest.xml" ||
       isDexEntry(f.name) ||
-      f.name.startsWith(ASSETS_PREFIX),
+      f.name.startsWith(ASSETS_PREFIX) ||
+      isCloakLib(f.name),
   );
 
   const apkDir = path.join(process.cwd(), tmpDir) + path.sep;
@@ -52,6 +60,11 @@ export async function unpackApk(
     .filter(isDexEntry)
     .sort()
     .map((name) => entries[name]!);
+
+  const cloakLibs = Object.keys(entries)
+    .filter(isCloakLib)
+    .sort()
+    .map((name) => Buffer.from(entries[name]!));
 
   let manifest: ManifestInfo | null = null;
   const manifestBytes = entries["AndroidManifest.xml"];
@@ -69,5 +82,5 @@ export async function unpackApk(
   }
 
   if (debug) console.log("preparing -> ready");
-  return { apkDir, manifest, dexBuffers };
+  return { apkDir, manifest, dexBuffers, cloakLibs };
 }

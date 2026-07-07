@@ -64,6 +64,11 @@ export async function copyAssets(
   if (await dirExists(resourcesSrc)) {
     const dest = restructured ? path.join(outDir, "Resources") : outDir;
     await mkdir(dest, { recursive: true });
-    await cp(resourcesSrc, dest, { recursive: true });
+    // Skip ti.cloak `.bin` files: those are encrypted sources recovered into
+    // memory and written by writeToDisk(), not copied verbatim.
+    await cp(resourcesSrc, dest, {
+      recursive: true,
+      filter: (src) => !src.endsWith(".bin"),
+    });
   }
 }

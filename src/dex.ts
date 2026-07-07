@@ -34,7 +34,9 @@ export interface AssetCrypt {
 
 export type AssetCryptResult =
   | { kind: "classic"; data: AssetCrypt }
-  | { kind: "newscheme" } // AssetCryptImpl present but the ti.cloak/.bin variant
+  // AssetCryptImpl present but the ti.cloak/.bin variant; `salt` is the AES-CBC
+  // IV lifted from the class's <clinit> (null if it couldn't be located).
+  | { kind: "newscheme"; salt: Buffer | null }
   | { kind: "none" };
 
 // ---------------------------------------------------------------------------
@@ -272,6 +274,65 @@ function detectVersion(insns: Uint16Array): TitaniumVersion {
   return "unknown";
 }
 
+const s32 = (lo: number, hi: number): number => (lo | (hi << 16)) | 0;
+
+/** Reads a `fill-array-data-payload` of byte elements at `payloadIdx`. */
+function readFillArrayBytes(insns: Uint16Array, payloadIdx: number): Buffer | null {
+  if (payloadIdx < 0 || (insns[payloadIdx] ?? 0) !== 0x0300) return null;
+  const elementWidth = insns[payloadIdx + 1] ?? 0;
+  if (elementWidth !== 1) return null; // only byte[] arrays (the salt)
+  const size = (insns[payloadIdx + 2] ?? 0) + (insns[payloadIdx + 3] ?? 0) * 0x10000;
+  const out = Buffer.alloc(size);
+  const dataStart = payloadIdx + 4;
+  for (let j = 0; j < size; j++) {
+    const unit = insns[dataStart + (j >> 1)] ?? 0;
+    out[j] = (j & 1) === 1 ? (unit >> 8) & 0xff : unit & 0xff;
+  }
+  return out;
+}
+
+/**
+ * Extracts static `byte[]` fields (assigned via `fill-array-data` +
+ * `sput-object`) from a method's instruction stream, keyed by field name.
+ */
+export function extractByteArrayFields(dex: DexFile, insns: Uint16Array): Record<string, Buffer> {
+  const pending = new Map<number, Buffer>();
+  const fields: Record<string, Buffer> = {};
+  let idx = 0;
+  while (idx < insns.length) {
+    const unit = insns[idx] ?? 0;
+    const op = unit & 0xff;
+    if (op === 0x26) {
+      // fill-array-data (31t): vAA, +BBBBBBBB (signed, code units, relative)
+      const reg = (unit >> 8) & 0xff;
+      const off = s32(insns[idx + 1] ?? 0, insns[idx + 2] ?? 0);
+      const bytes = readFillArrayBytes(insns, idx + off);
+      if (bytes) pending.set(reg, bytes);
+    } else if (op === 0x69) {
+      // sput-object (21c): vAA, field@BBBB
+      const reg = (unit >> 8) & 0xff;
+      const bytes = pending.get(reg);
+      if (bytes) {
+        const fieldId = dex.getFieldId(insns[idx + 1] ?? 0);
+        fields[dex.getStringById(fieldId.nameIdx)] = bytes;
+      }
+    }
+    idx += instructionWidth(insns, idx);
+  }
+  return fields;
+}
+
+/** Lifts the ti.cloak `salt` (AES-CBC IV) out of `AssetCryptImpl.<clinit>`. */
+export function extractCloakSalt(dex: DexFile, classDef: DexClassDef): Buffer | null {
+  const clinit = methodCode(dex, classDef, "<clinit>");
+  if (!clinit) return null;
+  const fields = extractByteArrayFields(dex, clinit.insns);
+  if (fields.salt) return fields.salt;
+  // Fallback: a lone 16-byte byte[] literal is almost certainly the IV/salt.
+  const sixteen = Object.values(fields).filter((b) => b.length === 16);
+  return sixteen.length === 1 ? sixteen[0]! : null;
+}
+
 function findAssetCryptClassDef(dex: DexFile, packageHint?: string): DexClassDef | null {
   if (packageHint) {
     const descriptor = `L${packageHint.split(".").join("/")}/AssetCryptImpl;`;
@@ -323,7 +384,7 @@ export function readAssetCrypt(
     if (!classDef) continue;
 
     const bytesCode = methodCode(dex, classDef, "initAssetsBytes");
-    if (!bytesCode) return { kind: "newscheme" };
+    if (!bytesCode) return { kind: "newscheme", salt: extractCloakSalt(dex, classDef) };
 
     const assetsCode = methodCode(dex, classDef, "initAssets");
     const chunks = extractStringChunks(dex, bytesCode.insns);

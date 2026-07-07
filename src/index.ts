@@ -10,6 +10,7 @@ import { unpackApk } from "./apk.js";
 import { readManifest } from "./manifest.js";
 import { decryptRanges, detectAlloy } from "./decrypt.js";
 import { readAssetCrypt, type AssetCryptResult } from "./dex.js";
+import { pickCloakKey, decryptCloakAsset } from "./cloak.js";
 import { buildInfo } from "./info.js";
 import { reconstruct as reconstructProject } from "./reconstruct.js";
 import { writeToDisk, copyAssets, type WrittenFile } from "./write.js";
@@ -47,21 +48,30 @@ export {
   readAssetCrypt,
   extractRanges,
   extractStringChunks,
+  extractByteArrayFields,
+  extractCloakSalt,
   instructionWidth,
   type DexRange,
   type AssetCrypt,
   type AssetCryptResult,
 } from "./dex.js";
+export { deriveCloakKey, decryptCloakAsset, pickCloakKey, isProbablyText } from "./cloak.js";
 export { buildInfo } from "./info.js";
 export { reconstruct as buildReconstruct, buildTiappXml } from "./reconstruct.js";
 export type { WrittenFile } from "./write.js";
 
-/** Thrown when an APK uses Titanium's newer, unsupported encryption scheme. */
+/**
+ * Thrown when an APK uses Titanium's ti.cloak (.bin) encryption and recovery
+ * could not complete — typically because the hardcoded `salt` or the bundled
+ * `libti.cloak.so` (needed to derive the AES key) is missing.
+ */
 export class UnsupportedEncryptionError extends Error {
-  constructor() {
+  constructor(reason?: string) {
     super(
-      "This APK uses Titanium's newer asset encryption (ti.cloak / .bin assets) " +
-        "whose key is derived natively at runtime and cannot be recovered statically.",
+      "This APK uses Titanium's newer ti.cloak asset encryption (.bin assets). " +
+        (reason ??
+          "Its AES key could not be derived from the bundled native library, so " +
+            "the sources could not be recovered."),
     );
     this.name = "UnsupportedEncryptionError";
   }
@@ -87,6 +97,7 @@ export class TiRecover {
   private tmpUsed = false;
   private manifest: ManifestInfo | null = null;
   private dexBuffers: Uint8Array[] = [];
+  private cloakLibs: Buffer[] = [];
   private assetCrypt: AssetCryptResult = { kind: "none" };
   private developmentMode = false;
   private tested = false;
@@ -121,6 +132,7 @@ export class TiRecover {
         ? this.config.apkDir
         : this.config.apkDir + path.sep;
       this.dexBuffers = await readDexBuffersFromDir(this.apkDir);
+      this.cloakLibs = await readCloakLibsFromDir(this.apkDir);
       this.manifest = await readManifest(this.apkDir);
       return;
     }
@@ -134,6 +146,7 @@ export class TiRecover {
     this.apkDir = result.apkDir;
     this.manifest = result.manifest;
     this.dexBuffers = result.dexBuffers;
+    this.cloakLibs = result.cloakLibs;
     this.tmpUsed = true;
   }
 
@@ -184,7 +197,10 @@ export class TiRecover {
 
     if (!this.developmentMode) {
       if (this.assetCrypt.kind === "newscheme") {
-        throw new UnsupportedEncryptionError();
+        const files = await this.recoverCloak(this.assetCrypt.salt);
+        if (!files) throw new UnsupportedEncryptionError();
+        this.memorySource = files;
+        return files;
       }
       if (this.assetCrypt.kind !== "classic") {
         throw new Error("No recoverable Titanium asset data was found in the APK.");
@@ -209,6 +225,57 @@ export class TiRecover {
       };
     }
     this.memorySource = source;
+    return source;
+  }
+
+  /**
+   * Attempts ti.cloak (.bin) recovery: derive the AES key from a bundled
+   * `libti.cloak.so` + the `salt` lifted from `AssetCryptImpl`, then AES-128-CBC
+   * decrypt every `Resources/*.bin` asset. Returns the recovered sources, or
+   * `null` when the salt/native lib is missing or no key validates.
+   */
+  private async recoverCloak(salt: Buffer | null): Promise<MemorySource | null> {
+    if (!salt) {
+      this.log("ti.cloak-> no salt found in AssetCryptImpl; cannot derive key");
+      return null;
+    }
+    if (this.cloakLibs.length === 0) {
+      this.log("ti.cloak-> no libti.cloak.so bundled in the APK; cannot derive key");
+      return null;
+    }
+
+    const baseAssets = path.join(this.apkDir, "assets", "Resources");
+    const bins = await readCloakBinFiles(baseAssets);
+    if (bins.length === 0) {
+      this.log("ti.cloak-> no .bin assets found under assets/Resources");
+      return null;
+    }
+
+    // Confirm a working key by trial-decrypting a sample asset (prefer a .js).
+    const sample = bins.find((b) => b.rel.endsWith(".js")) ?? bins[0]!;
+    const key = pickCloakKey(this.cloakLibs, salt, await readFile(sample.abs));
+    if (!key) {
+      this.log("ti.cloak-> could not derive a valid AES key from libti.cloak.so");
+      return null;
+    }
+
+    const source: MemorySource = {};
+    let totalBytes = 0;
+    for (const bin of bins) {
+      const decrypted = decryptCloakAsset(await readFile(bin.abs), key, salt);
+      if (!decrypted) continue;
+      const isText = DEV_SOURCE_EXTENSIONS.includes(path.extname(bin.rel).toLowerCase());
+      source[bin.rel] = {
+        offset: 0,
+        bytes: decrypted.length,
+        content: isText ? decrypted.toString("utf8") : decrypted,
+      };
+      totalBytes += decrypted.length;
+      this.log(`ti.cloak-> decrypted ${bin.rel}`);
+    }
+    if (Object.keys(source).length === 0) return null;
+
+    this.meta = { totalBytes, titaniumVersion: "unknown", alloy: detectAlloy(source) };
     return source;
   }
 
@@ -330,6 +397,40 @@ async function readDexBuffersFromDir(dir: string): Promise<Uint8Array[]> {
     buffers.push(await readFile(path.join(dir, name)));
   }
   return buffers;
+}
+
+/** Reads any `lib/**\/libti.cloak.so` buffers from a pre-extracted directory. */
+async function readCloakLibsFromDir(dir: string): Promise<Buffer[]> {
+  const libDir = path.join(dir, "lib");
+  if (!(await dirExists(libDir))) return [];
+  const entries = await readdir(libDir, { recursive: true, withFileTypes: true });
+  const libs: Buffer[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || entry.name !== "libti.cloak.so") continue;
+    const parent = (entry as unknown as { parentPath?: string; path?: string }).parentPath ??
+      (entry as unknown as { path?: string }).path ??
+      libDir;
+    libs.push(await readFile(path.join(parent, entry.name)));
+  }
+  return libs;
+}
+
+/** Lists ti.cloak `.bin` assets under `base`, mapping each to its logical name. */
+async function readCloakBinFiles(base: string): Promise<{ rel: string; abs: string }[]> {
+  if (!(await dirExists(base))) return [];
+  const entries = await readdir(base, { recursive: true, withFileTypes: true });
+  const bins: { rel: string; abs: string }[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".bin")) continue;
+    const parent = (entry as unknown as { parentPath?: string; path?: string }).parentPath ??
+      (entry as unknown as { path?: string }).path ??
+      base;
+    const abs = path.join(parent, entry.name);
+    // Logical name = path under Resources with the `.bin` suffix removed.
+    const rel = path.relative(base, abs).split(path.sep).join("/").replace(/\.bin$/, "");
+    bins.push({ rel, abs });
+  }
+  return bins;
 }
 
 /** Recursively lists source files (relative paths) under `base`. */

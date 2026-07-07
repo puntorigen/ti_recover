@@ -1,7 +1,7 @@
 {
   "name": "ti_recover",
-  "version": "2.1.0",
-  "description": "Recover the source code from almost any APK made with Appcelerator Titanium (development or distribution mode).",
+  "version": "2.2.0",
+  "description": "Recover the source code from almost any APK made with Appcelerator Titanium (development, distribution or ti.cloak mode).",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
