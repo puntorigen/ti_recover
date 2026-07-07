@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/puntorigen/ti_recover/master/assets/logo.png" alt="titanium-apk-recover" width="200" />
+  <img src="https://raw.githubusercontent.com/puntorigen/ti_recover/master/assets/banner.png" alt="titanium-apk-recover" width="820" />
 </p>
 
 ![npm version](https://img.shields.io/npm/v/titanium-apk-recover) ![npm downloads](https://img.shields.io/npm/dm/titanium-apk-recover) ![license](https://img.shields.io/npm/l/titanium-apk-recover) ![lines](https://img.shields.io/tokei/lines/github/puntorigen/ti_recover)
@@ -184,6 +184,11 @@ npm run typecheck  # tsc --noEmit
 ```
 
 ## Updates
+
+### version 2.2.2
+
+- Added a header banner (logo + wordmark + tagline) to the README / npm page.
+  No code changes.
 
 ### version 2.2.1
 
