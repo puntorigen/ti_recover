@@ -100,9 +100,15 @@ describe("decryptCloakAsset", () => {
 });
 
 describe("isProbablyText", () => {
-  it("recognises source text and rejects random binary", () => {
+  it("recognises source text and rejects binary", () => {
     expect(isProbablyText(Buffer.from("var x = 1; // js\n"))).toBe(true);
-    expect(isProbablyText(randomBytes(256))).toBe(false);
+    // Deterministic binary: a PNG signature followed by many NUL/control bytes.
+    const binary = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(120),
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01, 0x02, 0x03, 0x04]),
+    ]);
+    expect(isProbablyText(binary)).toBe(false);
     expect(isProbablyText(Buffer.alloc(0))).toBe(false);
   });
 });

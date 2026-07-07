@@ -1,6 +1,8 @@
-![ti_recover](https://user-images.githubusercontent.com/57605485/133170750-20244127-1ea0-4cd0-9c67-ac5ca44f17bc.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/puntorigen/ti_recover/master/assets/logo.png" alt="titanium-apk-recover" width="200" />
+</p>
 
-![license](https://img.shields.io/npm/l/ti_recover) ![lines](https://img.shields.io/tokei/lines/github/puntorigen/ti_recover)
+![npm version](https://img.shields.io/npm/v/titanium-apk-recover) ![npm downloads](https://img.shields.io/npm/dm/titanium-apk-recover) ![license](https://img.shields.io/npm/l/titanium-apk-recover) ![lines](https://img.shields.io/tokei/lines/github/puntorigen/ti_recover)
 
 Recover the source code from almost any APK built with [Appcelerator Titanium](https://titaniumsdk.com/), whether it was compiled in **development** or **distribution** (encrypted) mode — including the newer **`ti.cloak`** (`.bin`) encryption.
 
@@ -20,23 +22,26 @@ needed.
 
 ```bash
 # as a CLI
-npm install -g ti_recover
+npm install -g titanium-apk-recover
 
 # or as a dependency
-npm install ti_recover
+npm install titanium-apk-recover
 ```
+
+> Formerly published as `ti_recover`. The CLI still exposes a `ti_recover`
+> command alias for continuity.
 
 ## CLI usage
 
 ```bash
 # recover a project into ./out
-ti_recover myapp.apk ./out
+titanium-apk-recover myapp.apk ./out
 
 # just inspect what's inside (no files written)
-ti_recover info myapp.apk
+titanium-apk-recover info myapp.apk
 
 # emit machine-readable JSON
-ti_recover myapp.apk ./out --json
+titanium-apk-recover myapp.apk ./out --json
 ```
 
 By default the CLI **reconstructs** an openable Titanium project (sources under
@@ -46,8 +51,8 @@ raw recovered layout instead.
 ### Commands & options
 
 ```
-ti_recover <apk> <outdir>        Recover source code and assets (default command)
-ti_recover info <apk>            Print Titanium metadata about an APK
+titanium-apk-recover <apk> <outdir>   Recover source code and assets (default command)
+titanium-apk-recover info <apk>       Print Titanium metadata about an APK
 
 Options (recover):
   --no-reconstruct   keep the flat recovered layout instead of a Titanium project
@@ -65,7 +70,7 @@ Exit codes: `0` success, `1` error, `2` the APK was not built with Titanium.
 ### One-shot helper
 
 ```ts
-import { recover } from "ti_recover";
+import { recover } from "titanium-apk-recover";
 
 const result = await recover({
   apk: "myapp.apk",
@@ -82,13 +87,13 @@ if (result.recovered) {
 CommonJS works too:
 
 ```js
-const { recover } = require("ti_recover");
+const { recover } = require("titanium-apk-recover");
 ```
 
 ### Step-by-step with the `TiRecover` class
 
 ```ts
-import { TiRecover } from "ti_recover";
+import { TiRecover } from "titanium-apk-recover";
 
 const ti = new TiRecover({ apk: "myapp.apk", outDir: "./out" });
 
@@ -137,7 +142,7 @@ Everything runs in pure JS:
   `assets/Resources`, which are read directly.
 - **Distribution-mode** APKs store all sources as a single AES-encrypted blob.
   Titanium's generated `AssetCryptImpl` class holds that blob and the per-file
-  byte ranges in its bytecode. ti_recover reads `classes*.dex` with
+  byte ranges in its bytecode. titanium-apk-recover reads `classes*.dex` with
   [`libdex-ts`](https://www.npmjs.com/package/libdex-ts) and walks the
   `initAssetsBytes()` / `initAssets()` instruction streams to lift the blob and
   ranges directly, then decrypts each file with `node:crypto`
@@ -152,7 +157,7 @@ produced by the native `libti.cloak.so` (see
 [issue #9](https://github.com/puntorigen/ti_recover/issues/9) and
 [#6](https://github.com/puntorigen/ti_recover/issues/6)).
 
-Since **v2.2.0** ti_recover recovers these too, entirely in JS:
+Since **v2.2.0** titanium-apk-recover recovers these too, entirely in JS:
 
 - the `salt` (IV) is lifted from `AssetCryptImpl.<clinit>` (its `byte[]`
   `fill-array-data` payload) in the DEX;
@@ -162,11 +167,11 @@ Since **v2.2.0** ti_recover recovers these too, entirely in JS:
 - each `.bin` is decrypted with `node:crypto` (`aes-128-cbc`), transparently
   gunzipping any compressed payloads.
 
-The derived key is confirmed by trial-decrypting a sample asset, so ti_recover
-tries every bundled ABI and only proceeds when one produces valid output. If the
-APK ships no `libti.cloak.so` (e.g. an ABI-split APK missing the native lib), the
-key can't be derived and ti_recover reports it with a clear error instead of
-producing garbage.
+The derived key is confirmed by trial-decrypting a sample asset, so
+titanium-apk-recover tries every bundled ABI and only proceeds when one produces
+valid output. If the APK ships no `libti.cloak.so` (e.g. an ABI-split APK missing
+the native lib), the key can't be derived and titanium-apk-recover reports it
+with a clear error instead of producing garbage.
 
 ## Development
 
@@ -179,6 +184,13 @@ npm run typecheck  # tsc --noEmit
 ```
 
 ## Updates
+
+### version 2.2.1
+
+- **Renamed the npm package to `titanium-apk-recover`** (previously `ti_recover`)
+  for better discoverability. The published package now lives under
+  [`titanium-apk-recover`](https://www.npmjs.com/package/titanium-apk-recover);
+  the CLI keeps a `ti_recover` command alias for continuity. No API changes.
 
 ### version 2.2.0
 

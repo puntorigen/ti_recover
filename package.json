@@ -1,6 +1,6 @@
 {
-  "name": "ti_recover",
-  "version": "2.2.0",
+  "name": "titanium-apk-recover",
+  "version": "2.2.1",
   "description": "Recover the source code from almost any APK made with Appcelerator Titanium (development, distribution or ti.cloak mode).",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -14,6 +14,7 @@
     }
   },
   "bin": {
+    "titanium-apk-recover": "./dist/cli.js",
     "ti_recover": "./dist/cli.js"
   },
   "files": [
@@ -41,6 +42,10 @@
     "recover",
     "source",
     "decompile",
+    "decompiler",
+    "unpack",
+    "extract",
+    "ti.cloak",
     "reverse-engineering",
     "cli"
   ],
