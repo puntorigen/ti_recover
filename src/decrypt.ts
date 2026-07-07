@@ -1,23 +1,20 @@
 /**
- * Recover Titanium's encrypted JavaScript assets.
+ * Decrypt Titanium's asset blob with pure Node crypto (no JVM).
  *
- * A distribution-mode Titanium APK stores every JS/JSON/etc. source file as a
- * single AES-encrypted blob. Two generated Java classes describe how to rebuild
- * it:
+ * Distribution-mode Titanium stores every source file as one AES-encrypted
+ * blob; the AES key is the last 16 bytes of that blob and each file occupies an
+ * `[offset, length]` range within it. Java's default `Cipher.getInstance("AES")`
+ * is `AES/ECB/PKCS5Padding`, which maps directly to Node's `aes-128-ecb` with
+ * automatic PKCS padding.
  *
- *  - `AssetCryptImpl.smali` contains `initAssetsBytes()` which concatenates a
- *    (Java-escaped) string literal that, once ISO-8859-1 encoded, is the raw
- *    encrypted byte buffer. The AES key is the last 16 bytes of that buffer.
- *  - `AssetCryptImpl.java` contains a `hashMap.put("file", new Range(off, len))`
- *    entry per source file describing where that file lives inside the blob.
- *
- * The parsing of both files is implemented as pure functions (unit-tested
- * without a JVM). Only the AES step still uses the bundled `java` bridge; that
- * will move to `node:crypto` in Phase 2.
+ * The blob and ranges now come from {@link readAssetCrypt} (DEX parsing). The
+ * smali/java text parsers below (`parseAssetBuffer`, `parseRanges`,
+ * `decodeJavaInt`) are retained as standalone helpers for callers working from
+ * decompiled sources, but are no longer on the main recovery path.
  */
-import { readFile } from "node:fs/promises";
-import { getJava } from "./java.js";
-import type { DecryptMeta, DecryptResult, MemorySource, TitaniumVersion } from "./types.js";
+import { createDecipheriv } from "node:crypto";
+import type { DexRange } from "./dex.js";
+import type { MemorySource, TitaniumVersion } from "./types.js";
 
 /** A single file's location inside the decrypted asset blob. */
 export interface Range {
@@ -27,11 +24,8 @@ export interface Range {
 
 /** Result of parsing `AssetCryptImpl.smali`'s `initAssetsBytes()`. */
 export interface AssetBufferParse {
-  /** Coarse engine version bucket derived from the smali const opcode. */
   titaniumVersion: TitaniumVersion;
-  /** Declared CharBuffer length, or -1 when not found. */
   bufferLen: number;
-  /** Concatenated, still Java-escaped string literal. */
   escaped: string;
 }
 
@@ -102,16 +96,14 @@ export function parseAssetBuffer(smaliContent: string): AssetBufferParse {
     if (!started) continue;
 
     if (line.indexOf("const v0, ") !== -1) {
-      // Titanium < v5
       titaniumVersion = "<5";
       bufferLen = decodeJavaInt(line.split("const v0, ").join("").trim());
     } else if (line.indexOf("const/16 v0, ") !== -1) {
-      // Titanium v5.x +
       titaniumVersion = "5.x";
       bufferLen = decodeJavaInt(line.split("const/16 v0, ").join("").trim());
     } else if (line.indexOf("const-string v1") !== -1) {
       let content = line.split('const-string v1, "').join("").trim();
-      content = content.slice(0, -1); // drop the trailing quote
+      content = content.slice(0, -1);
       chunks.push(content);
     } else if (line.indexOf("rewind()Ljava/nio/Buffer;") !== -1) {
       break;
@@ -132,109 +124,59 @@ export function detectAlloy(files: MemorySource): boolean {
   );
 }
 
-export interface DecryptOptions {
-  smaliPath: string;
-  javaPath: string;
-  debug?: boolean;
+const KEY_LEN = 16;
+
+/**
+ * Decrypts one `[offset, length]` slice of the blob. The key is the last 16
+ * bytes of the blob. Titanium varied two conventions across versions, so we try
+ * the key derived from both `length` and `length - 1`, and the slice from both
+ * `offset` and `offset - 1` (some files have a padded offset).
+ */
+export function decryptRange(blob: Buffer, offset: number, length: number): string | null {
+  for (const total of [blob.length - 1, blob.length]) {
+    if (total - KEY_LEN < 0) continue;
+    const key = blob.subarray(total - KEY_LEN, total);
+    for (const start of [offset, offset - 1]) {
+      if (start < 0 || start + length > blob.length) continue;
+      try {
+        const decipher = createDecipheriv("aes-128-ecb", key, null);
+        decipher.setAutoPadding(true);
+        const out = Buffer.concat([
+          decipher.update(blob.subarray(start, start + length)),
+          decipher.final(),
+        ]);
+        const text = out.toString("utf8");
+        if (text !== "") return text;
+      } catch {
+        // try the next key/offset combination
+      }
+    }
+  }
+  return null;
+}
+
+export interface DecryptRangesResult {
+  files: MemorySource;
+  totalBytes: number;
 }
 
 /**
- * Reads and decrypts the Titanium asset blob described by the given
- * `AssetCryptImpl` smali + java files. Requires the native `java` bridge.
+ * Decrypts every range out of the blob into an in-memory source map. Files that
+ * fail to decrypt are skipped rather than aborting the whole run.
  */
-export async function decryptAssets(options: DecryptOptions): Promise<DecryptResult> {
-  const { smaliPath, javaPath, debug = false } = options;
-  const log = (msg: string) => {
-    if (debug) console.log(msg);
-  };
-
-  const [smaliContent, javaContent] = await Promise.all([
-    readFile(smaliPath, "utf8"),
-    readFile(javaPath, "utf8"),
-  ]);
-
-  const parsed = parseAssetBuffer(smaliContent);
-  const ranges = parseRanges(javaContent);
-
-  const java = getJava();
-  const Charset = java.import("java.nio.charset.Charset");
-  const CharBuffer = java.import("java.nio.CharBuffer");
-  const StringEscapeUtils = java.import("org.apache.commons.lang.StringEscapeUtils");
-
-  log("decoding bytes ...");
-  const unescaped: string = StringEscapeUtils.unescapeJavaSync(parsed.escaped);
-  const bufferLen = parsed.bufferLen > 0 ? parsed.bufferLen : unescaped.length;
-  const charBuffer = CharBuffer.allocateSync(bufferLen);
-  charBuffer.appendSync(unescaped);
-  charBuffer.rewindSync();
-
-  log("converting into java array of bytes ... takes some time");
-  const assetBytes: number[] = Charset.forNameSync("ISO-8859-1")
-    .encodeSync(charBuffer)
-    .arraySync();
-  const boxedBytes = assetBytes.map((b) => java.newByte(b));
-  const byteArray = java.newArray("byte", boxedBytes);
-
-  log("extracting file ranges ...");
+export function decryptRanges(
+  blob: Buffer,
+  ranges: DexRange[],
+  debug = false,
+): DecryptRangesResult {
   const files: MemorySource = {};
   let totalBytes = 0;
-  for (const [file, range] of Object.entries(ranges)) {
-    try {
-      const content = decryptRange(java, byteArray, range.offset, range.bytes);
-      files[file] = { offset: range.offset, bytes: range.bytes, content };
-      totalBytes += range.bytes;
-      if (content !== "") log(`file:${file}, decrypted !`);
-    } catch {
-      // Skip files that fail to decrypt rather than aborting the whole run.
-    }
+  for (const range of ranges) {
+    const content = decryptRange(blob, range.offset, range.bytes);
+    if (content === null) continue;
+    files[range.file] = { offset: range.offset, bytes: range.bytes, content };
+    totalBytes += range.bytes;
+    if (debug) console.log(`file:${range.file}, decrypted !`);
   }
-
-  const meta: DecryptMeta = {
-    totalBytes,
-    titaniumVersion: parsed.titaniumVersion,
-    alloy: detectAlloy(files),
-  };
-
-  return { files, meta };
-}
-
-/**
- * Decrypts a single [offset, length] slice of the AES blob. The key is the last
- * 16 bytes of the buffer. Two attempts cover the two key-offset conventions
- * Titanium used across versions (<= 3.4.0 uses length-1, later uses length).
- */
-function decryptRange(java: any, bytes: any, offset: number, length: number): string {
-  const SecretKeySpec = java.import("javax.crypto.spec.SecretKeySpec");
-  const Cipher = java.import("javax.crypto.Cipher");
-  const DECRYPT_MODE = 2;
-  const keyLen = 0x10;
-
-  const attempt = (bytesLen: number): string => {
-    const key = new SecretKeySpec(bytes, bytesLen - keyLen, keyLen, "AES");
-    const cipher = Cipher.getInstanceSync("AES");
-    cipher.initSync(DECRYPT_MODE, key);
-    let decrypted: number[];
-    try {
-      decrypted = cipher.doFinalSync(bytes, offset, length);
-    } catch {
-      // Some files have a padded offset.
-      decrypted = cipher.doFinalSync(bytes, offset - 1, length);
-    }
-    return String.fromCharCode.apply(null, Array.from(new Uint16Array(decrypted)));
-  };
-
-  const totalLen = bytes.length;
-  // FIRST ATTEMPT - Titanium below 3.2.2 / 3.4.0 (key derived from length - 1).
-  try {
-    const result = attempt(totalLen - 1);
-    if (result !== "") return result;
-  } catch {
-    // fall through to second attempt
-  }
-  // SECOND ATTEMPT - Titanium over v3.4.0.
-  try {
-    return attempt(totalLen);
-  } catch {
-    return "";
-  }
+  return { files, totalBytes };
 }

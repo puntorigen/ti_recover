@@ -7,8 +7,8 @@ export interface RecoverConfig {
   /** Path to the `.apk` file to recover. Relative paths resolve against `cwd`. */
   apk?: string;
   /**
-   * Path to an already-unpacked `apk_unpack` output directory. When provided,
-   * the (slow) decompile step is skipped and this directory is used as-is.
+   * Path to an already-extracted APK directory. When provided, the unzip step
+   * is skipped: `classes*.dex` and `AndroidManifest.xml` are read from here.
    */
   apkDir?: string;
   /** Directory where recovered source and assets are written. */

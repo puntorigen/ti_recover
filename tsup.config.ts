@@ -11,9 +11,7 @@ export default defineConfig({
   platform: "node",
   clean: true,
   sourcemap: true,
-  // Provides working `import.meta.url` in the CJS bundle and `__dirname`
-  // in the ESM bundle so bundled JAR paths resolve in both formats.
+  // Provides working `import.meta.url` in the CJS bundle and `__dirname` in the
+  // ESM bundle (used for `createRequire` when loading adbkit-apkreader).
   shims: true,
-  // Native/optional deps stay external so they are resolved at runtime.
-  external: ["java", "apk_unpack"],
 });

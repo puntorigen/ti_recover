@@ -4,16 +4,17 @@
 
 Recover the source code from almost any APK built with [Appcelerator Titanium](https://titaniumsdk.com/), whether it was compiled in **development** or **distribution** (encrypted) mode.
 
-It ships as both a modern, promise-based **library** (TypeScript types included, ESM + CommonJS) and a **command-line tool**.
+It ships as both a modern, promise-based **library** (TypeScript types included, ESM + CommonJS) and a **command-line tool**, and runs **entirely in JavaScript** — no JDK, apktool or jadx required.
 
 > As featured in my blog post: [How recoverable is an APK's source code made with Titanium?](https://pabloschaffner.cl/2017/02/01/how-recoverable-is-an-apk-source-code-made-with-titanium/)
 
 ## Requirements
 
 - **Node.js >= 18**
-- A **JDK** (Java 8+) available on your machine. The APK unpacking (apktool + jadx) and the distribution-mode asset decryption currently run through a bundled JVM via the optional [`java`](https://www.npmjs.com/package/java) native bridge. If the bridge cannot be built, the pure-JS parts of the library still work but recovery of a real APK will be unavailable until a JDK is present.
 
-> Removing the JVM requirement entirely (pure JS decryption + APK parsing) is planned — see the [roadmap](#roadmap).
+That's it. Since **v2.1.0** everything (APK unzip, binary manifest parsing, DEX
+parsing and AES decryption) runs in pure JS, so no Java/JDK installation is
+needed.
 
 ## Install
 
@@ -91,7 +92,7 @@ import { TiRecover } from "ti_recover";
 
 const ti = new TiRecover({ apk: "myapp.apk", outDir: "./out" });
 
-await ti.init();                 // unpack + decompile the APK
+await ti.init();                 // unzip the APK (pure JS)
 if (await ti.test()) {           // is it a Titanium app?
   await ti.extract();            // recover sources into memory
   const info = await ti.info();  // Titanium metadata (call after extract)
@@ -107,7 +108,7 @@ await ti.clean();                // remove the temporary working directory
 | Method | Description |
 | --- | --- |
 | `new TiRecover(config)` | Create an instance. Config: `apk`, `apkDir`, `outDir`, `tmpDir`, `debug`. |
-| `init()` | Unpacks and decompiles the APK (or reuses a provided `apkDir`). |
+| `init()` | Unzips the APK in pure JS (or reuses a provided extracted `apkDir`). |
 | `test()` | Resolves `true` if the APK was built with Titanium (dev or distribution). |
 | `extract()` | Recovers sources into memory; resolves a `MemorySource` map. |
 | `info()` | Resolves `TitaniumInfo` (package, versions, mode, engine, Alloy, files). Call after `extract()`. |
@@ -117,41 +118,60 @@ await ti.clean();                // remove the temporary working directory
 | `clean()` | Removes the temporary working directory. |
 
 Pure, JVM-free helpers are also exported for advanced use and testing:
-`parseManifest`, `parseRanges`, `parseAssetBuffer`, `decodeJavaInt`,
-`detectAlloy`, `buildInfo`, `buildReconstruct`, `buildTiappXml`, and
-`isJavaAvailable`.
+`parseManifest`, `parseBinaryManifest`, `readAssetCrypt`, `decryptRange`,
+`decryptRanges`, `parseRanges`, `parseAssetBuffer`, `decodeJavaInt`,
+`detectAlloy`, `extractStringChunks`, `extractRanges`, `instructionWidth`,
+`buildInfo`, `buildReconstruct` and `buildTiappXml`.
 
 ## How it works
 
+Everything runs in pure JS:
+
+- The APK is unzipped with [`fflate`](https://www.npmjs.com/package/fflate).
+- The binary `AndroidManifest.xml` is parsed with
+  [`adbkit-apkreader`](https://www.npmjs.com/package/adbkit-apkreader) for the
+  package id and versions (and re-serialised to readable XML in the output).
 - **Development-mode** APKs ship plain JS/JSON/XML sources under
   `assets/Resources`, which are read directly.
 - **Distribution-mode** APKs store all sources as a single AES-encrypted blob.
-  Two generated classes describe how to rebuild it: `AssetCryptImpl.smali`
-  (the encrypted byte buffer) and `AssetCryptImpl.java` (per-file byte ranges).
-  ti_recover parses both, derives the AES key from the buffer and decrypts each
-  file's range.
+  Titanium's generated `AssetCryptImpl` class holds that blob and the per-file
+  byte ranges in its bytecode. ti_recover reads `classes*.dex` with
+  [`libdex-ts`](https://www.npmjs.com/package/libdex-ts) and walks the
+  `initAssetsBytes()` / `initAssets()` instruction streams to lift the blob and
+  ranges directly, then decrypts each file with `node:crypto`
+  (`aes-128-ecb`, key = the blob's last 16 bytes).
 
-## Roadmap
+### Unsupported: the newer `ti.cloak` scheme
 
-**Phase 2 — remove the Java dependency** so recovery runs entirely in JS:
-
-- Replace `javax.crypto` AES decryption with Node's built-in `node:crypto`, and
-  the Java string un-escaping with a small JS helper (drops `commons-lang` and
-  the `java` bridge from the decryption path).
-- Replace the `apk_unpack` (apktool + jadx) step with a JS/WASM APK unpack and a
-  pure-JS binary `AndroidManifest.xml` parser.
+Recent Titanium SDKs replaced the static `AssetCryptImpl` blob with a scheme
+that stores each source as an encrypted `.bin` asset whose key is derived
+**natively at runtime** (see [issue #9](https://github.com/puntorigen/ti_recover/issues/9)).
+Because the key never appears statically, those APKs cannot be recovered by
+static analysis. ti_recover detects this case and reports it with a clear
+error instead of producing garbage.
 
 ## Development
 
 ```bash
-npm install        # install deps (native 'java' bridge is optional)
+npm install        # install deps
 npm run build      # bundle ESM + CJS + types into dist/
-npm test           # run the vitest suite (no JVM required)
+npm test           # run the vitest suite (pure JS, no JVM)
 npm run lint       # eslint
 npm run typecheck  # tsc --noEmit
 ```
 
 ## Updates
+
+### version 2.1.0
+
+- **Removed the Java/JDK dependency entirely** — recovery now runs in pure JS.
+  - APK unzip via `fflate` (replaces the `apk_unpack` apktool step).
+  - Binary `AndroidManifest.xml` parsing via `adbkit-apkreader` (replaces the apktool text decode); a readable manifest is still written to the output.
+  - Distribution-mode asset data (encrypted blob + per-file ranges) is lifted directly from `classes*.dex` with `libdex-ts` and a small DEX instruction walker (replaces the jadx decompile of `AssetCryptImpl`).
+  - AES decryption via `node:crypto` `aes-128-ecb` (replaces `javax.crypto`); DEX stores real strings, so the old `commons-lang` string-unescape step is gone.
+- Dropped the optional `java` and `apk_unpack` dependencies and the bundled ~13 MB `java/` directory (apktool + jadx JARs).
+- Detects and clearly reports APKs using the newer, statically-unrecoverable `ti.cloak` / `.bin` encryption scheme.
+- Multidex aware (scans `classes.dex`, `classes2.dex`, …).
 
 ### version 2.0.0
 

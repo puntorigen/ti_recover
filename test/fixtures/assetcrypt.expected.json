@@ -1,0 +1,26 @@
+{
+  "package": "com.example.recovered",
+  "sources": {
+    "app.js": "Ti.API.info('hello world');\nvar win = Ti.UI.createWindow();\nwin.open();\n",
+    "alloy.js": "var Alloy = require('/alloy');\nAlloy.createController('index');\n",
+    "ui/index.js": "exports.render = function () {\n  return { ok: true };\n};\n"
+  },
+  "ranges": [
+    {
+      "file": "app.js",
+      "offset": 0,
+      "bytes": 80
+    },
+    {
+      "file": "alloy.js",
+      "offset": 80,
+      "bytes": 80
+    },
+    {
+      "file": "ui/index.js",
+      "offset": 160,
+      "bytes": 64
+    }
+  ],
+  "blobLength": 240
+}

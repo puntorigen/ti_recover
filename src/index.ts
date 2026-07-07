@@ -8,11 +8,13 @@ import path from "node:path";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { unpackApk } from "./apk.js";
 import { readManifest } from "./manifest.js";
-import { decryptAssets } from "./decrypt.js";
+import { decryptRanges, detectAlloy } from "./decrypt.js";
+import { readAssetCrypt, type AssetCryptResult } from "./dex.js";
 import { buildInfo } from "./info.js";
 import { reconstruct as reconstructProject } from "./reconstruct.js";
 import { writeToDisk, copyAssets, type WrittenFile } from "./write.js";
 import { fileExists, dirExists } from "./fs-utils.js";
+import { isDexEntry } from "./zip.js";
 import type {
   DecryptMeta,
   ManifestInfo,
@@ -31,18 +33,39 @@ export type {
   DecryptMeta,
   DecryptResult,
 } from "./types.js";
-export { isJavaAvailable } from "./java.js";
-export { parseManifest } from "./manifest.js";
+export { parseManifest, parseBinaryManifest } from "./manifest.js";
 export {
   parseRanges,
   parseAssetBuffer,
   decodeJavaInt,
   detectAlloy,
+  decryptRange,
+  decryptRanges,
   type Range,
 } from "./decrypt.js";
+export {
+  readAssetCrypt,
+  extractRanges,
+  extractStringChunks,
+  instructionWidth,
+  type DexRange,
+  type AssetCrypt,
+  type AssetCryptResult,
+} from "./dex.js";
 export { buildInfo } from "./info.js";
 export { reconstruct as buildReconstruct, buildTiappXml } from "./reconstruct.js";
 export type { WrittenFile } from "./write.js";
+
+/** Thrown when an APK uses Titanium's newer, unsupported encryption scheme. */
+export class UnsupportedEncryptionError extends Error {
+  constructor() {
+    super(
+      "This APK uses Titanium's newer asset encryption (ti.cloak / .bin assets) " +
+        "whose key is derived natively at runtime and cannot be recovered statically.",
+    );
+    this.name = "UnsupportedEncryptionError";
+  }
+}
 
 /** Source file extensions recovered into memory in development mode. */
 const DEV_SOURCE_EXTENSIONS = [".js", ".json", ".xml", ".tss", ".rjss", ".jss", ".css"];
@@ -63,9 +86,8 @@ export class TiRecover {
   private apkDir = "";
   private tmpUsed = false;
   private manifest: ManifestInfo | null = null;
-  private packageDir = "";
-  private smaliLoc = "";
-  private javaLoc = "";
+  private dexBuffers: Uint8Array[] = [];
+  private assetCrypt: AssetCryptResult = { kind: "none" };
   private developmentMode = false;
   private tested = false;
   private isTitanium = false;
@@ -89,12 +111,17 @@ export class TiRecover {
   }
 
   /**
-   * Prepares the working directory. If `apkDir` is supplied it is used directly;
-   * otherwise the configured `apk` is unpacked and decompiled into `tmpDir`.
+   * Prepares the working directory. If `apkDir` is supplied it is used directly
+   * (reading any `classes*.dex` and manifest found there); otherwise the
+   * configured `apk` is unzipped into `tmpDir`.
    */
   async init(): Promise<void> {
     if (this.config.apkDir) {
-      this.apkDir = this.config.apkDir;
+      this.apkDir = this.config.apkDir.endsWith(path.sep)
+        ? this.config.apkDir
+        : this.config.apkDir + path.sep;
+      this.dexBuffers = await readDexBuffersFromDir(this.apkDir);
+      this.manifest = await readManifest(this.apkDir);
       return;
     }
     if (!this.config.apk) {
@@ -103,10 +130,10 @@ export class TiRecover {
     const apkResolved = path.isAbsolute(this.config.apk)
       ? this.config.apk
       : path.resolve(this.cwd, this.config.apk);
-    if (!(await fileExists(apkResolved))) {
-      throw new Error(`The given APK file doesn't exist: ${this.config.apk}`);
-    }
-    this.apkDir = await unpackApk(this.config.apk, this.config.tmpDir, this.config.debug);
+    const result = await unpackApk(apkResolved, this.config.tmpDir, this.config.debug);
+    this.apkDir = result.apkDir;
+    this.manifest = result.manifest;
+    this.dexBuffers = result.dexBuffers;
     this.tmpUsed = true;
   }
 
@@ -118,20 +145,16 @@ export class TiRecover {
     if (!this.apkDir) {
       throw new Error("Call init() before test().");
     }
-    this.manifest = await readManifest(this.apkDir);
-    if (!this.manifest?.package) {
-      this.tested = true;
-      this.isTitanium = false;
-      return false;
+    if (!this.manifest) {
+      this.manifest = await readManifest(this.apkDir);
     }
+    this.tested = true;
 
-    this.packageDir = this.manifest.package.split(".").join(path.sep);
-    this.smaliLoc = path.join(this.apkDir, "smali", this.packageDir, "AssetCryptImpl.smali");
-    this.javaLoc = path.join(this.apkDir, "src", this.packageDir, "AssetCryptImpl.java");
-
-    if ((await fileExists(this.smaliLoc)) && (await fileExists(this.javaLoc))) {
+    // Distribution mode: look for the generated AssetCryptImpl class in the DEX.
+    this.assetCrypt = readAssetCrypt(this.dexBuffers, this.manifest?.package);
+    if (this.assetCrypt.kind !== "none") {
+      // `classic` (recoverable) and `newscheme` (unsupported) are both Titanium.
       this.developmentMode = false;
-      this.tested = true;
       this.isTitanium = true;
       return true;
     }
@@ -140,20 +163,18 @@ export class TiRecover {
     const appDev = path.join(this.apkDir, "assets", "Resources", "app.js");
     if (await fileExists(appDev)) {
       this.developmentMode = true;
-      this.tested = true;
       this.isTitanium = true;
       return true;
     }
 
-    this.tested = true;
     this.isTitanium = false;
     return false;
   }
 
   /**
    * Extracts recovered sources into memory. For distribution builds this
-   * decrypts the AES asset blob; for development builds it reads the plain
-   * `assets/Resources` tree.
+   * decrypts the AES asset blob (from data lifted out of the DEX); for
+   * development builds it reads the plain `assets/Resources` tree.
    */
   async extract(): Promise<MemorySource> {
     if (!this.tested) await this.test();
@@ -162,13 +183,16 @@ export class TiRecover {
     }
 
     if (!this.developmentMode) {
-      const { files, meta } = await decryptAssets({
-        smaliPath: this.smaliLoc,
-        javaPath: this.javaLoc,
-        debug: this.config.debug,
-      });
+      if (this.assetCrypt.kind === "newscheme") {
+        throw new UnsupportedEncryptionError();
+      }
+      if (this.assetCrypt.kind !== "classic") {
+        throw new Error("No recoverable Titanium asset data was found in the APK.");
+      }
+      const { blob, ranges, titaniumVersion } = this.assetCrypt.data;
+      const { files, totalBytes } = decryptRanges(blob, ranges, this.config.debug);
       this.memorySource = files;
-      this.meta = meta;
+      this.meta = { totalBytes, titaniumVersion, alloy: detectAlloy(files) };
       return files;
     }
 
@@ -295,6 +319,17 @@ export async function recover(options: RecoverOptions): Promise<RecoverResult> {
   } finally {
     if (clean) await ti.clean();
   }
+}
+
+/** Reads `classes*.dex` buffers from a pre-extracted directory (if any). */
+async function readDexBuffersFromDir(dir: string): Promise<Uint8Array[]> {
+  if (!(await dirExists(dir))) return [];
+  const names = (await readdir(dir)).filter(isDexEntry).sort();
+  const buffers: Uint8Array[] = [];
+  for (const name of names) {
+    buffers.push(await readFile(path.join(dir, name)));
+  }
+  return buffers;
 }
 
 /** Recursively lists source files (relative paths) under `base`. */

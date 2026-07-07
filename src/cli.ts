@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("ti_recover")
   .description("Recover the source code from an Appcelerator Titanium APK.")
-  .version("2.0.0");
+  .version("2.1.0");
 
 program
   .command("recover", { isDefault: true })
@@ -112,8 +112,8 @@ function printInfo(info?: TitaniumInfo): void {
   row("Total bytes", info.totalBytes);
 }
 
-// The native `java` bridge boots a JVM whose non-daemon threads keep the Node
-// process alive, so we exit explicitly once the command has finished.
+// Exit explicitly once the command finishes so any lingering worker handles
+// (e.g. fflate's async unzip pool) don't hold the process open.
 program
   .parseAsync()
   .then(() => process.exit(process.exitCode ?? 0))

@@ -1,55 +1,73 @@
 /**
- * Promise wrapper around the `apk_unpack` package (apktool + jadx via the
- * shared `java` bridge). Produces an unpacked directory containing the decoded
- * `AndroidManifest.xml`, `assets/`, decompiled `src/` and disassembled `smali/`.
+ * Pure-JS APK unpack (no JVM). Reads the APK zip with `fflate`, parses the
+ * binary manifest, extracts `assets/Resources/**` and a readable manifest into
+ * a working directory, and returns the raw `classes*.dex` buffers for DEX-based
+ * asset recovery.
  */
 import path from "node:path";
-import { createRequire } from "node:module";
-import { getJava } from "./java.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { readApkEntries, isDexEntry } from "./zip.js";
+import { parseBinaryManifest } from "./manifest.js";
 import { fileExists } from "./fs-utils.js";
+import type { ManifestInfo } from "./types.js";
 
-const require = createRequire(import.meta.url);
-
-interface ApkUnpack {
-  init(config: { apk: string; dir: string; java?: boolean }): void;
-  extract(cb: (ok: boolean) => void): void;
-  decompile(onReady: () => void): void;
+export interface UnpackResult {
+  /** Working directory (with trailing separator) holding manifest + assets. */
+  apkDir: string;
+  /** Parsed manifest info, or null if the APK had no manifest. */
+  manifest: ManifestInfo | null;
+  /** Raw `classes*.dex` buffers, ordered `classes.dex`, `classes2.dex`, ... */
+  dexBuffers: Uint8Array[];
 }
 
+const ASSETS_PREFIX = "assets/Resources/";
+
 /**
- * Unpacks and decompiles an APK into `tmpDir` (relative to `cwd`), returning the
- * absolute path (with trailing separator) of the unpacked directory.
+ * Unpacks an APK into `tmpDir` (relative to `cwd`): writes a readable
+ * `AndroidManifest.xml` and `assets/Resources/**`, and returns the manifest and
+ * DEX buffers for downstream recovery.
  */
 export async function unpackApk(
   apkPath: string,
   tmpDir: string,
   debug = false,
-): Promise<string> {
+): Promise<UnpackResult> {
   if (!(await fileExists(apkPath))) {
     throw new Error(`The given APK file doesn't exist: ${apkPath}`);
   }
 
-  // Ensure the shared JVM classpath (incl. commons-lang for decryption) is
-  // registered before `apk_unpack` requires 'java' and boots the JVM.
-  getJava();
-  const apk = require("apk_unpack") as ApkUnpack;
-
-  apk.init({ apk: apkPath, dir: tmpDir, java: true });
-
-  await new Promise<void>((resolve, reject) => {
-    apk.extract((ok) => {
-      if (!ok) {
-        reject(new Error(`Failed to extract APK: ${apkPath}`));
-        return;
-      }
-      if (debug) console.log("preparing -> extracting and decrypting classes.dex");
-      apk.decompile(() => {
-        if (debug) console.log("preparing -> ready");
-        resolve();
-      });
-    });
-  });
+  if (debug) console.log("preparing -> reading APK entries");
+  const entries = await readApkEntries(
+    apkPath,
+    (f) =>
+      f.name === "AndroidManifest.xml" ||
+      isDexEntry(f.name) ||
+      f.name.startsWith(ASSETS_PREFIX),
+  );
 
   const apkDir = path.join(process.cwd(), tmpDir) + path.sep;
-  return apkDir;
+  await mkdir(apkDir, { recursive: true });
+
+  const dexBuffers = Object.keys(entries)
+    .filter(isDexEntry)
+    .sort()
+    .map((name) => entries[name]!);
+
+  let manifest: ManifestInfo | null = null;
+  const manifestBytes = entries["AndroidManifest.xml"];
+  if (manifestBytes) {
+    const { info, xml } = parseBinaryManifest(Buffer.from(manifestBytes), apkDir);
+    manifest = info;
+    await writeFile(path.join(apkDir, "AndroidManifest.xml"), xml);
+  }
+
+  for (const [name, data] of Object.entries(entries)) {
+    if (!name.startsWith(ASSETS_PREFIX) || name.endsWith("/")) continue;
+    const dest = path.join(apkDir, name);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, Buffer.from(data));
+  }
+
+  if (debug) console.log("preparing -> ready");
+  return { apkDir, manifest, dexBuffers };
 }

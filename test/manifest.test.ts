@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
-import { parseManifest } from "../src/manifest.js";
+import { readFileSync } from "node:fs";
+import { parseManifest, parseBinaryManifest, isBinaryManifest } from "../src/manifest.js";
 import { readManifest } from "../src/manifest.js";
 
 const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
+const binaryManifest = readFileSync(`${fixturesDir}/AndroidManifest.bin`);
 
 describe("parseManifest", () => {
   it("extracts package, versions and app name from an AndroidManifest", () => {
@@ -30,8 +32,36 @@ describe("parseManifest", () => {
   });
 });
 
+describe("isBinaryManifest", () => {
+  it("recognises the AXML magic and rejects text", () => {
+    expect(isBinaryManifest(binaryManifest)).toBe(true);
+    expect(isBinaryManifest(Buffer.from("<?xml version=\"1.0\"?>"))).toBe(false);
+  });
+});
+
+describe("parseBinaryManifest", () => {
+  it("extracts package/versions/label from a binary AXML manifest", () => {
+    const { info } = parseBinaryManifest(binaryManifest, "/tmp/apk");
+    expect(info.package).toBe("com.example.tibin");
+    expect(info.versionCode).toBe("99");
+    expect(info.versionName).toBe("3.2.1");
+    expect(info.appName).toBe("TiBinApp");
+    expect(info.dir).toBe("/tmp/apk");
+  });
+
+  it("serialises a readable XML copy with the android namespace", () => {
+    const { xml } = parseBinaryManifest(binaryManifest);
+    expect(xml).toContain("<?xml");
+    expect(xml).toContain('xmlns:android="http://schemas.android.com/apk/res/android"');
+    expect(xml).toContain('package="com.example.tibin"');
+    expect(xml).toContain('android:versionName="3.2.1"');
+    expect(xml).toContain('android:label="TiBinApp"');
+    expect(xml).toContain("<application");
+  });
+});
+
 describe("readManifest", () => {
-  it("reads and parses the fixture manifest", async () => {
+  it("reads and parses the (text) fixture manifest", async () => {
     const info = await readManifest(fixturesDir);
     expect(info).not.toBeNull();
     expect(info?.package).toBe("cl.pabloschaffner.recovered");
