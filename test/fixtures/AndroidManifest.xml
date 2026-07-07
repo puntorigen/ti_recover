@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="cl.pabloschaffner.recovered"
+    android:versionCode="42"
+    android:versionName="1.3.0">
+    <application android:label="RecoveredApp" android:icon="@drawable/appicon">
+        <activity android:name=".RecoveredappActivity" />
+    </application>
+</manifest>

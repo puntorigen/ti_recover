@@ -1,0 +1,13 @@
+src/
+test/
+node_modules/
+coverage/
+_tmp/
+*.log
+.DS_Store
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+eslint.config.js
+.prettierrc.json
+.editorconfig

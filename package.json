@@ -1,43 +1,79 @@
 {
   "name": "ti_recover",
-  "version": "1.1.1",
-  "description": "Appcelerator Titanium APK source code recovery tool",
-  "main": "ti_recover.js",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/creador/ti_recover.git"
+  "version": "2.0.0",
+  "description": "Recover the source code from almost any APK made with Appcelerator Titanium (development or distribution mode).",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "ti_recover": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "java",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "creador",
-    "recover",
-    "sourcecode",
-    "titanium",
     "appcelerator",
+    "titanium",
     "apk",
-    "decompile",
     "android",
-    "recovery"
+    "recover",
+    "source",
+    "decompile",
+    "reverse-engineering",
+    "cli"
   ],
   "author": "Pablo Schaffner",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/puntorigen/ti_recover.git"
+  },
   "bugs": {
-    "url": "https://github.com/creador/ti_recover/issues"
+    "url": "https://github.com/puntorigen/ti_recover/issues"
   },
-  "homepage": "https://github.com/creador/ti_recover#readme",
+  "homepage": "https://github.com/puntorigen/ti_recover#readme",
   "dependencies": {
-    "apk_unpack": "^1.2.1",
-    "cheerio": "^0.22.0",
-    "colors": "^1.1.2",
-    "copy-dir": "^0.3.0",
-    "fs-extra": "^2.0.0",
-    "fs-readdir-recursive": "^1.0.0",
-    "java": "^0.8.0",
-    "js-beautify": "^1.6.8",
-    "line-reader": "^0.4.0",
-    "mkdirp": "^0.5.1",
-    "revinter": "^1.0.0"
+    "cheerio": "^1.1.2",
+    "commander": "^15.0.0",
+    "js-beautify": "^2.0.3",
+    "picocolors": "^1.1.1"
   },
-  "bin": {
-    "ti_recover": "./cli"
+  "optionalDependencies": {
+    "apk_unpack": "^1.2.1",
+    "java": "^0.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/js-beautify": "^1.14.3",
+    "@types/node": "^26.1.0",
+    "eslint": "^10.6.0",
+    "prettier": "^3.9.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
   }
 }
