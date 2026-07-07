@@ -7,7 +7,14 @@ import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { zipSync } from "fflate";
-import { deriveCloakKey, decryptCloakAsset, pickCloakKey, isProbablyText } from "../src/cloak.js";
+import {
+  deriveCloakKey,
+  decryptCloakAsset,
+  pickCloakKey,
+  isProbablyText,
+  extractKeyBlock,
+  cloakKeyCandidates,
+} from "../src/cloak.js";
 import { readAssetCrypt } from "../src/dex.js";
 import { recover } from "../src/index.js";
 
@@ -40,6 +47,110 @@ function aesCbc(plain: Buffer, key: Buffer, iv: Buffer): Buffer {
   const c = createCipheriv("aes-128-cbc", key, iv);
   c.setAutoPadding(true);
   return Buffer.concat([c.update(plain), c.final()]);
+}
+
+/** Builds a 64-byte KEY_BLOCK such that deriveKeyFromBlock(block, salt) === key. */
+function buildKeyBlock(salt: Buffer, key: Buffer): Buffer {
+  const block = randomBytes(0x40);
+  const xor = Buffer.alloc(16);
+  for (let i = 0; i < 16; i++) xor[i] = salt[i]! ^ key[i]!;
+  const randomOffset = 0x34; // base+0x34..0x38, clear of the fixed slices
+  block[0x3e] = randomOffset;
+  xor.copy(block, 1, 0, 4);
+  xor.copy(block, randomOffset, 4, 8);
+  xor.copy(block, 0xf, 8, 12);
+  xor.copy(block, 0x1e, 12, 16);
+  return block;
+}
+
+/**
+ * Builds a minimal but valid ELF (ELF32 or ELF64) exporting `KEY_BLOCK` at an
+ * arbitrary file offset, so extractKeyBlock must resolve it via the symbol
+ * table (not a hardcoded offset). The offset is intentionally NOT one of the
+ * known fallbacks.
+ */
+function buildSyntheticElf(block: Buffer, is64: boolean, keyBlockFileOff = 0x5000): Buffer {
+  const shentsize = is64 ? 64 : 40;
+  const symEnt = is64 ? 24 : 16;
+  const dynstrOff = 0x1000;
+  const dynsymOff = 0x1100;
+  const shoff = 0x1300;
+  const buf = Buffer.alloc(keyBlockFileOff + 0x1000);
+  block.copy(buf, keyBlockFileOff);
+  const vaddr = keyBlockFileOff; // identity map (addr === file offset)
+
+  buf[0] = 0x7f;
+  buf[1] = 0x45;
+  buf[2] = 0x4c;
+  buf[3] = 0x46;
+  buf[4] = is64 ? 2 : 1; // EI_CLASS
+  buf[5] = 1; // EI_DATA = little-endian
+  buf[6] = 1; // EI_VERSION
+
+  const w16 = (o: number, v: number): void => void buf.writeUInt16LE(v, o);
+  const w32 = (o: number, v: number): void => void buf.writeUInt32LE(v, o);
+  const w64 = (o: number, v: number): void => void buf.writeBigUInt64LE(BigInt(v), o);
+
+  w16(0x10, 3); // e_type = ET_DYN
+  w16(0x12, is64 ? 183 : 40); // e_machine (AArch64 / ARM)
+  w32(0x14, 1); // e_version
+  if (is64) {
+    w64(0x28, shoff);
+    w16(0x34, 64);
+    w16(0x3a, shentsize);
+    w16(0x3c, 4); // e_shnum
+  } else {
+    w32(0x20, shoff);
+    w16(0x28, 52);
+    w16(0x2e, shentsize);
+    w16(0x30, 4);
+  }
+
+  Buffer.from("\0KEY_BLOCK\0", "latin1").copy(buf, dynstrOff);
+
+  const sym = dynsymOff + symEnt; // entry 0 is the null symbol
+  if (is64) {
+    w32(sym + 0, 1); // st_name -> "KEY_BLOCK"
+    buf[sym + 4] = 0x11; // st_info
+    w16(sym + 6, 3); // st_shndx -> .data
+    w64(sym + 8, vaddr); // st_value
+    w64(sym + 16, 64); // st_size
+  } else {
+    w32(sym + 0, 1);
+    w32(sym + 4, vaddr);
+    w32(sym + 8, 64);
+    buf[sym + 0xc] = 0x11;
+    w16(sym + 0xe, 3);
+  }
+
+  const SHT_PROGBITS = 1;
+  const SHT_STRTAB = 3;
+  const SHT_DYNSYM = 11;
+  const writeShdr = (
+    idx: number,
+    s: { type: number; addr: number; offset: number; size: number; link: number; entsize: number },
+  ): void => {
+    const b = shoff + idx * shentsize;
+    w32(b + 4, s.type);
+    if (is64) {
+      w64(b + 0x10, s.addr);
+      w64(b + 0x18, s.offset);
+      w64(b + 0x20, s.size);
+      w32(b + 0x28, s.link);
+      w64(b + 0x38, s.entsize);
+    } else {
+      w32(b + 0x0c, s.addr);
+      w32(b + 0x10, s.offset);
+      w32(b + 0x14, s.size);
+      w32(b + 0x18, s.link);
+      w32(b + 0x24, s.entsize);
+    }
+  };
+  writeShdr(1, { type: SHT_STRTAB, addr: 0, offset: dynstrOff, size: 11, link: 0, entsize: 0 });
+  writeShdr(2, { type: SHT_DYNSYM, addr: 0, offset: dynsymOff, size: symEnt * 2, link: 1, entsize: symEnt });
+  writeShdr(3, { type: SHT_PROGBITS, addr: vaddr, offset: keyBlockFileOff, size: 0x100, link: 0, entsize: 0 });
+
+  return buf;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +238,50 @@ describe("pickCloakKey", () => {
     const salt = randomBytes(16);
     const sample = aesCbc(Buffer.from("Ti.API.info('ok');\n"), randomBytes(16), salt);
     expect(pickCloakKey([randomBytes(0x3000)], salt, sample)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ELF symbol resolution (issue #13): KEY_BLOCK offset varies per ABI/SDK, so
+// resolve the exported symbol instead of assuming a fixed offset.
+// ---------------------------------------------------------------------------
+describe("extractKeyBlock / ELF KEY_BLOCK resolution", () => {
+  const salt = Buffer.from("8f2a4c6e1b3d5f79a0c2e4068a1b3d5f", "hex");
+  const key = Buffer.from("CloakKey_16bytes", "latin1");
+
+  for (const is64 of [true, false]) {
+    const bits = is64 ? "ELF64" : "ELF32";
+
+    it(`extracts KEY_BLOCK from a ${bits} at a non-standard offset`, () => {
+      const block = buildKeyBlock(salt, key);
+      const so = buildSyntheticElf(block, is64, 0x5000); // 0x5000 is not a fallback
+      expect(extractKeyBlock(so)?.equals(block)).toBe(true);
+    });
+
+    it(`derives the key from a ${bits} regardless of block offset`, () => {
+      const block = buildKeyBlock(salt, key);
+      const so = buildSyntheticElf(block, is64, 0x7abc);
+      expect(deriveCloakKey(so, salt)?.equals(key)).toBe(true);
+      expect(cloakKeyCandidates(so, salt)[0]?.equals(key)).toBe(true);
+    });
+
+    it(`pickCloakKey validates a ${bits} lib whose offset is not in the table`, () => {
+      const block = buildKeyBlock(salt, key);
+      const so = buildSyntheticElf(block, is64, 0x9010);
+      const sample = aesCbc(Buffer.from("Ti.API.info('elf');\n"), key, salt);
+      expect(pickCloakKey([so], salt, sample)?.equals(key)).toBe(true);
+    });
+  }
+
+  it("returns null for a non-ELF buffer", () => {
+    expect(extractKeyBlock(randomBytes(0x3000))).toBeNull();
+  });
+
+  it("still works via the fixed-offset fallback when there is no ELF symbol", () => {
+    // buildSyntheticSo writes the block at the arm64 offset with no symbol table.
+    const so = buildSyntheticSo(salt, key);
+    expect(extractKeyBlock(so)).toBeNull();
+    expect(deriveCloakKey(so, salt)?.equals(key)).toBe(true);
   });
 });
 

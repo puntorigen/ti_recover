@@ -55,7 +55,15 @@ export {
   type AssetCrypt,
   type AssetCryptResult,
 } from "./dex.js";
-export { deriveCloakKey, decryptCloakAsset, pickCloakKey, isProbablyText } from "./cloak.js";
+export {
+  deriveCloakKey,
+  deriveKeyFromBlock,
+  extractKeyBlock,
+  cloakKeyCandidates,
+  decryptCloakAsset,
+  pickCloakKey,
+  isProbablyText,
+} from "./cloak.js";
 export { buildInfo } from "./info.js";
 export { reconstruct as buildReconstruct, buildTiappXml } from "./reconstruct.js";
 export type { WrittenFile } from "./write.js";

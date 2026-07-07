@@ -126,9 +126,9 @@ Pure, JVM-free helpers are also exported for advanced use and testing:
 `parseManifest`, `parseBinaryManifest`, `readAssetCrypt`, `decryptRange`,
 `decryptRanges`, `parseRanges`, `parseAssetBuffer`, `decodeJavaInt`,
 `detectAlloy`, `extractStringChunks`, `extractRanges`, `extractByteArrayFields`,
-`extractCloakSalt`, `instructionWidth`, `deriveCloakKey`, `decryptCloakAsset`,
-`pickCloakKey`, `isProbablyText`, `buildInfo`, `buildReconstruct` and
-`buildTiappXml`.
+`extractCloakSalt`, `instructionWidth`, `extractKeyBlock`, `deriveKeyFromBlock`,
+`cloakKeyCandidates`, `deriveCloakKey`, `decryptCloakAsset`, `pickCloakKey`,
+`isProbablyText`, `buildInfo`, `buildReconstruct` and `buildTiappXml`.
 
 ## How it works
 
@@ -161,17 +161,21 @@ Since **v2.2.0** titanium-apk-recover recovers these too, entirely in JS:
 
 - the `salt` (IV) is lifted from `AssetCryptImpl.<clinit>` (its `byte[]`
   `fill-array-data` payload) in the DEX;
-- the AES key is derived from the fixed key block the build embeds in every
+- the AES key is derived from the fixed `KEY_BLOCK` the build embeds in every
   bundled `lib/<abi>/libti.cloak.so` (the key is `salt XOR xor`, where `xor` is
-  assembled from four slices of that block);
+  assembled from four slices of that block). Because the block's file offset
+  varies per ABI/SDK/compile flags, its location is resolved from the ELF's
+  exported `KEY_BLOCK` symbol (a small built-in ELF32/ELF64 parser), falling
+  back to the known per-ABI offsets — see
+  [issue #13](https://github.com/puntorigen/ti_recover/issues/13);
 - each `.bin` is decrypted with `node:crypto` (`aes-128-cbc`), transparently
   gunzipping any compressed payloads.
 
-The derived key is confirmed by trial-decrypting a sample asset, so
-titanium-apk-recover tries every bundled ABI and only proceeds when one produces
-valid output. If the APK ships no `libti.cloak.so` (e.g. an ABI-split APK missing
-the native lib), the key can't be derived and titanium-apk-recover reports it
-with a clear error instead of producing garbage.
+Every candidate key is confirmed by trial-decrypting a sample asset, so
+titanium-apk-recover tries each bundled ABI (and each candidate offset) and only
+proceeds when one produces valid output. If the APK ships no `libti.cloak.so`
+(e.g. an ABI-split APK missing the native lib), the key can't be derived and
+titanium-apk-recover reports it with a clear error instead of producing garbage.
 
 ## Development
 
@@ -184,6 +188,18 @@ npm run typecheck  # tsc --noEmit
 ```
 
 ## Updates
+
+### version 2.3.0
+
+- **More robust `ti.cloak` key extraction** ([issue #13](https://github.com/puntorigen/ti_recover/issues/13),
+  thanks [@j4k0xb](https://github.com/j4k0xb)). The `KEY_BLOCK` offset inside
+  `libti.cloak.so` is no longer hardcoded to the arm64 value (`0x2008`) — it is
+  resolved from the ELF's exported `KEY_BLOCK` symbol via a small built-in
+  ELF32/ELF64 parser, so `armeabi-v7a`, `x86`, `x86_64` and ABI-split APKs now
+  work too. Known per-ABI offsets remain as a fallback, and every candidate is
+  still validated by trial decryption.
+- New exported helpers: `extractKeyBlock`, `deriveKeyFromBlock`,
+  `cloakKeyCandidates`.
 
 ### version 2.2.2
 
